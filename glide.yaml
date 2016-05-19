@@ -1,0 +1,23 @@
+package: github.com/fabric8io/exposer
+import:
+- package: github.com/openshift/origin
+  version: v1.1.6
+  subpackages:
+  - pkg/build
+- package: k8s.io/kubernetes
+  version: release-1.2-stable-20160316
+  repo: git@github.com:openshift/kubernetes.git
+  vcs: git
+  subpackages:
+  - pkg/api
+  - pkg/api/resource
+  - pkg/api/unversioned
+  - pkg/client/unversioned
+  - pkg/fields
+  - pkg/kubectl/cmd
+  - pkg/kubectl/cmd/util
+  - pkg/labels
+  - pkg/runtime
+  - pkg/util
+- package: github.com/Sirupsen/logrus
+  version: v0.7.3
