@@ -1,0 +1,13 @@
+apiVersion: "v1"
+data:
+  exposer-rule: "ingress"
+ # exposer-rule: "load-balancer"
+ # exposer-rule: "node-port"
+ # exposer-rule: "route"
+kind: "ConfigMap"
+metadata:
+  labels:
+    provider: "fabric8"
+    project: "exposer"
+    group: "io.fabric8.devops.apps"
+  name: "fabric8-environment"
