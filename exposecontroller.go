@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -85,7 +86,7 @@ func serviceDeleted(c *client.Client) func(obj interface{}) {
 }
 
 func addExposeRule(c *client.Client, svc *api.Service, ns string) {
-	log.Println("Found service [" + svc.ObjectMeta.Name + "] in namespace [" + ns + "]")
+	log.Printf("Found service %s in namespace %s", svc.ObjectMeta.Name, ns)
 	currentNs := os.Getenv("KUBERNETES_NAMESPACE")
 	if len(currentNs) <= 0 {
 		log.Fatalf("No KUBERNETES_NAMESPACE env var set")
@@ -93,19 +94,19 @@ func addExposeRule(c *client.Client, svc *api.Service, ns string) {
 
 	environment, err := c.ConfigMaps(currentNs).Get(fabric8Environment)
 	if err != nil {
-		log.Fatalf("No ConfigMap with name [" + fabric8Environment + "] found in namespace [" + currentNs + "].  Was the exposecontroller namespace setup by gofabric8?")
+		log.Fatalf("No ConfigMap with name %s found in namespace %s.  Was the exposecontroller namespace setup by gofabric8? %v", fabric8Environment, currentNs, err)
 	}
 
 	d, ok := environment.Data[domain]
 	if !ok {
-		log.Fatalf("No ConfigMap data with name [" + domain + "] found in namespace [" + currentNs + "].  Was the exposecontroller namespace setup by gofabric8?")
+		log.Fatalf("No ConfigMap data with name %s found in namespace %s.  Was the exposecontroller namespace setup by gofabric8? %v", domain, currentNs, err)
 	}
 
 	switch environment.Data[exposeRule] {
 	case ingress:
 		err := createIngress(ns, d, svc, c)
 		if err != nil {
-			log.Printf("Unable to create ingress rule for service "+svc.ObjectMeta.Name, err)
+			log.Printf("Unable to create ingress rule for service %s %v", svc.ObjectMeta.Name, err)
 		}
 	case route:
 		log.Println("Not yet implemented")
@@ -116,7 +117,7 @@ func addExposeRule(c *client.Client, svc *api.Service, ns string) {
 		useLoadBalancer(ns, svc, c)
 
 	default:
-		log.Fatalf("No match for [" + environment.Data[exposeRule] + "] expose-rule found.  Was the exposecontroller namespace setup by gofabric8?")
+		log.Fatalf("No match for %s expose-rule found.  Was the exposecontroller namespace setup by gofabric8?", environment.Data[exposeRule])
 	}
 }
 
@@ -145,12 +146,12 @@ func useNodePort(ns string, svc *api.Service, c *client.Client) error {
 		svc.Spec.Type = api.ServiceTypeNodePort
 		svc, err := c.Services(ns).Update(svc)
 		if err != nil {
-			log.Printf("Unable to update service ["+svc.ObjectMeta.Name+"] with NodePort", err)
+			log.Printf("Unable to update service %s with NodePort %v", svc.ObjectMeta.Name, err)
 			return err
 		}
-		success("Exposed service [" + svc.ObjectMeta.Name + "] using NodePort")
+		successf("Exposed service %s using NodePort", svc.ObjectMeta.Name)
 	}
-	log.Printf("Skipping service [" + svc.ObjectMeta.Name + "]")
+	log.Printf("Skipping service %s", svc.ObjectMeta.Name)
 	return nil
 }
 
@@ -160,12 +161,12 @@ func useLoadBalancer(ns string, svc *api.Service, c *client.Client) error {
 		svc.Spec.Type = api.ServiceTypeLoadBalancer
 		svc, err := c.Services(ns).Update(svc)
 		if err != nil {
-			log.Printf("Unable to update service ["+svc.ObjectMeta.Name+"] with LoadBalancer", err)
+			log.Printf("Unable to update service %s with LoadBalancer %v", svc.ObjectMeta.Name, err)
 			return err
 		}
-		success("Exposed service [" + svc.ObjectMeta.Name + "] using LoadBalancer. This can take a few minutes to ve create by cloud provider")
+		successf("Exposed service %s using LoadBalancer. This can take a few minutes to be create by cloud provider", svc.ObjectMeta.Name)
 	}
-	log.Printf("Skipping service [" + svc.ObjectMeta.Name + "]")
+	log.Printf("Skipping service %s", svc.ObjectMeta.Name)
 	return nil
 }
 
@@ -249,13 +250,18 @@ func createIngress(ns string, domain string, service *api.Service, c *client.Cli
 					log.Printf("Failed to create the ingress %s with error %v", name, err)
 					return err
 				}
-				success("Exposed service " + name + " using ingress rule")
+				successf("Exposed service %s using ingress rule", name)
 			}
 		}
 	} else {
-		log.Printf("Skipping service [" + name + "]")
+		log.Printf("Skipping service %s", name)
 	}
 	return nil
+}
+
+// Successf prints success message
+func successf(msg string, args ...interface{}) {
+	success(fmt.Sprintf(msg, args...))
 }
 
 func success(msg string) {
