@@ -105,14 +105,16 @@ func addExposeRule(c *client.Client, svc *api.Service, ns string) {
 	case ingress:
 		err := createIngress(ns, d, svc, c)
 		if err != nil {
-			log.Fatalf("Unable to create ingress rule for service " + svc.ObjectMeta.Name)
+			log.Printf("Unable to create ingress rule for service "+svc.ObjectMeta.Name, err)
 		}
 	case route:
-		log.Println("Creating OpenShift Route")
+		log.Println("Not yet implemented")
 	case nodePort:
-		log.Println("Adapting Service type to be NodePort")
+		useNodePort(ns, svc, c)
+
 	case loadBalancer:
-		log.Println("Adapting Service type to be LoadBalancer, this can take a few minutes to ve create by cloud provider")
+		useLoadBalancer(ns, svc, c)
+
 	default:
 		log.Fatalf("No match for [" + environment.Data[exposeRule] + "] expose-rule found.  Was the exposecontroller namespace setup by gofabric8?")
 	}
@@ -134,6 +136,36 @@ func deleteExposeRule(svc string, c *client.Client) error {
 	}
 
 	success("Deleted ingress rule [" + name + "] in namespace [" + ns + "]")
+	return nil
+}
+
+func useNodePort(ns string, svc *api.Service, c *client.Client) error {
+	serviceLabels := svc.ObjectMeta.Labels
+	if serviceLabels["expose"] == "true" {
+		svc.Spec.Type = api.ServiceTypeNodePort
+		svc, err := c.Services(ns).Update(svc)
+		if err != nil {
+			log.Printf("Unable to update service ["+svc.ObjectMeta.Name+"] with NodePort", err)
+			return err
+		}
+		success("Exposed service [" + svc.ObjectMeta.Name + "] using NodePort")
+	}
+	log.Printf("Skipping service [" + svc.ObjectMeta.Name + "]")
+	return nil
+}
+
+func useLoadBalancer(ns string, svc *api.Service, c *client.Client) error {
+	serviceLabels := svc.ObjectMeta.Labels
+	if serviceLabels["expose"] == "true" {
+		svc.Spec.Type = api.ServiceTypeLoadBalancer
+		svc, err := c.Services(ns).Update(svc)
+		if err != nil {
+			log.Printf("Unable to update service ["+svc.ObjectMeta.Name+"] with LoadBalancer", err)
+			return err
+		}
+		success("Exposed service [" + svc.ObjectMeta.Name + "] using LoadBalancer. This can take a few minutes to ve create by cloud provider")
+	}
+	log.Printf("Skipping service [" + svc.ObjectMeta.Name + "]")
 	return nil
 }
 
