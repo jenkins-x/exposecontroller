@@ -1,6 +1,6 @@
-# Exposer
+# Exposecontroller
 
-Automatically exposes services creating ingress routes using the namespace as the wildcard
+Automatically expose services creating ingress rules, openshift routes or modifying services to use kubernetes nodePort or loadBalancer service types
 
 # Future
 
@@ -12,29 +12,29 @@ On startup it would be good to check if an ingress controller is already running
  * install [go version 1.5.1 or later](https://golang.org/doc/install)
  * install [glide](https://github.com/Masterminds/glide#install)
  * type the following:
- * when using local kubernetes VM export the `DOCKER_HOST` env var to build the exposer image and run inside kubernetes
+ * when using local kubernetes VM export the `DOCKER_HOST` env var to build the exposecontroller image and run inside kubernetes
 
 ```
 cd $GOPATH
 mkdir -p src/github.com/fabric8io/
 cd src/github.com/fabric8io/
-git clone https://github.com/fabric8io/exposer.git
-cd exposer
+git clone https://github.com/fabric8io/exposecontroller.git
+cd exposecontroller
 
 make bootstrap
 ```
 
  * then to build the binary
 
-     `make build` (not currently working on OSX so use `GOOS=linux GOARCH=386 go build -o bin/exposer exposer.go`)
+     `make build` (not currently working on OSX so use `GOOS=linux GOARCH=386 go build -o bin/exposecontroller exposecontroller.go`)
 
  * build docker image
 
-     `docker build -t fabric8/exposer:0.1 .`
+     `docker build -t fabric8/exposecontroller:0.1 .`
 
  * run in kubernetes
 
-     `kubectl run exposer --image fabric8/exposer:0.1`
+     `kubectl run exposecontroller --image fabric8/exposecontroller:0.1`
 
 ## Releasing
 

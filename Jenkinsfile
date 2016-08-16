@@ -1,7 +1,7 @@
 #!/usr/bin/groovy
 node{
 
-  git 'https://github.com/fabric8io/exposer.git'
+  git 'https://github.com/fabric8io/exposecontroller.git'
 
   kubernetes.pod('buildpod').withImage('fabric8/go-builder')
   .withEnvVar('GOPATH','/home/jenkins/workspace/workspace/go')
@@ -9,11 +9,11 @@ node{
 
     stage 'build binary'
 
-    sh "mkdir -p ../go/src/github.com/fabric8io/exposer; cp -R ../${env.JOB_NAME}/. ../go/src/github.com/fabric8io/exposer/; cd ../go/src/github.com/fabric8io/exposer; make build test lint"
+    sh "mkdir -p ../go/src/github.com/fabric8io/exposecontroller; cp -R ../${env.JOB_NAME}/. ../go/src/github.com/fabric8io/exposecontroller/; cd ../go/src/github.com/fabric8io/exposecontroller; make build test lint"
 
-    sh "cp -R ../go/src/github.com/fabric8io/exposer/bin ."
+    sh "cp -R ../go/src/github.com/fabric8io/exposecontroller/bin ."
 
-    def imageName = 'exposer'
+    def imageName = 'exposecontroller'
     def tag = 'latest'
 
     stage 'build image'

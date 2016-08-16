@@ -2,7 +2,7 @@ ifndef GOPATH
 $(error No GOPATH set)
 endif
 
-NAME := exposer
+NAME := exposecontroller
 VERSION := $(shell cat version/VERSION)
 REVISION=$(shell git rev-parse --short HEAD 2> /dev/null || echo 'unknown')
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD 2> /dev/null || echo 'unknown')
@@ -25,13 +25,13 @@ DIST_DIR := _dist
 GO := GO15VENDOREXPERIMENT=1 go
 GO_PACKAGES := $(shell $(GO) list ./... | grep -v /vendor/)
 SRCS := $(shell find . -path ./vendor -prune -o -name '*.go')
-MAIN_GO := exposer.go
-exposer_BIN := $(BIN_DIR)/exposer
+MAIN_GO := exposecontroller.go
+exposecontroller_BIN := $(BIN_DIR)/exposecontroller
 
 LINTERS := --disable-all --enable=vet --enable=golint --enable=errcheck --enable=ineffassign --enable=interfacer --enable=goimports --enable=gofmt
 
 build: $(MAIN_GO)
-	$(GO) build -o $(exposer_BIN) $(BUILDFLAGS) $<
+	$(GO) build -o $(exposecontroller_BIN) $(BUILDFLAGS) $<
 
 bootstrap:
 	$(GO) get -u github.com/golang/lint/golint github.com/mitchellh/gox github.com/alecthomas/gometalinter github.com/fabric8io/gobump
@@ -50,13 +50,13 @@ clean:
 
 install: build
 	install -d $(DESTDIR)/usr/local/bin/
-	install -m 755 $(exposer_BIN) $(DESTDIR)/usr/local/bin/exposer
+	install -m 755 $(exposecontroller_BIN) $(DESTDIR)/usr/local/bin/exposecontroller
 
 prep-bintray-json:
 # TRAVIS_TAG is set to the tag name if the build is a tag
 ifdef TRAVIS_TAG
 	@jq '.version.name |= "$(VERSION)"' _scripts/ci/bintray-template.json | \
-		jq '.package.repo |= "exposer"' > _scripts/ci/bintray-ci.json
+		jq '.package.repo |= "exposecontroller"' > _scripts/ci/bintray-ci.json
 else
 	@jq '.version.name |= "$(VERSION)"' _scripts/ci/bintray-template.json \
 		> _scripts/ci/bintray-ci.json
@@ -74,8 +74,8 @@ lint:
 
 docker-scratch:
 	gox -verbose $(BUILDFLAGS) -os="linux" -arch="amd64" \
-	   -output="bin/exposer-docker" .
-	docker build -f Dockerfile.scratch -t "fabric8/exposer:scratch" .
+	   -output="bin/exposecontroller-docker" .
+	docker build -f Dockerfile.scratch -t "fabric8/exposecontroller:scratch" .
 
 release: build-all
 	rm -rf build release && mkdir build release

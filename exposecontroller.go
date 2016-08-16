@@ -122,6 +122,7 @@ func deleteExposerRule(svc string) {
 	name := strings.Split(svc, "/")[1]
 
 	log.Println("Service deleted [" + name + "] in namespace [" + ns + "]")
+
 }
 
 func createIngress(ns string, domain string, service *api.Service, c *client.Client) error {

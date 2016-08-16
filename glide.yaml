@@ -1,9 +1,22 @@
 package: github.com/fabric8io/exposer
 import:
+- package: github.com/daviddengcn/go-colortext
 - package: github.com/openshift/origin
   version: v1.1.6
   subpackages:
-  - pkg/build
+  - pkg/client
+  - pkg/cmd/admin/policy
+  - pkg/cmd/server/bootstrappolicy
+  - pkg/route/api
+  - pkg/template
+  - pkg/template/api
+  - pkg/template/api/v1
+  - pkg/template/generator
+- package: github.com/spf13/cobra
+- package: github.com/spf13/pflag
+- package: golang.org/x/crypto
+  subpackages:
+  - ssh
 - package: k8s.io/kubernetes
   version: release-1.2-stable-20160316
   repo: git@github.com:openshift/kubernetes.git
@@ -21,3 +34,9 @@ import:
   - pkg/util
 - package: github.com/Sirupsen/logrus
   version: v0.7.3
+- package: github.com/coreos/pkg
+  subpackages:
+  - capnslog
+- package: github.com/coreos/go-systemd
+  subpackages:
+  - journal

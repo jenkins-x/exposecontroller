@@ -1,7 +1,7 @@
 FROM centos:7
 
-ENV PATH $PATH:/usr/local/exposer/
+ENV PATH $PATH:/usr/local/exposecontroller/
 
-ADD ./bin/exposer /usr/local/exposer/
+ADD ./bin/exposecontroller /usr/local/exposecontroller/
 
-CMD exposer
+CMD exposecontroller
