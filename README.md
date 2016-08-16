@@ -12,7 +12,7 @@ On startup it would be good to check if an ingress controller is already running
  * install [go version 1.5.1 or later](https://golang.org/doc/install)
  * install [glide](https://github.com/Masterminds/glide#install)
  * type the following:
- * when using local kubernetes VM export the `DOCKER_HOST` env var to build the exposecontroller image and run inside kubernetes
+ * when using minikube or minishift expose the docker daemon to build the exposecontroller image and run inside kubernetes.  e.g  `export DOCKER_API_VERSION=1.23 && eval $(minikube docker-env)`
 
 ```
 cd $GOPATH
@@ -21,7 +21,7 @@ cd src/github.com/fabric8io/
 git clone https://github.com/fabric8io/exposecontroller.git
 cd exposecontroller
 
-make bootstrap
+make
 ```
 
  * then to build the binary

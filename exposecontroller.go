@@ -26,6 +26,7 @@ import (
 	"github.com/daviddengcn/go-colortext"
 	"github.com/fabric8io/exposecontroller/client"
 	"github.com/fabric8io/exposecontroller/util"
+	osclient "github.com/openshift/origin/pkg/client"
 	rapi "github.com/openshift/origin/pkg/route/api"
 	rapiv1 "github.com/openshift/origin/pkg/route/api/v1"
 	"k8s.io/kubernetes/pkg/api"
@@ -52,7 +53,8 @@ const (
 func main() {
 
 	f := cmdutil.NewFactory(nil)
-	c, _ := client.NewClient(f)
+	c, cfg := client.NewClient(f)
+	oc, _ := client.NewOpenShiftClient(cfg)
 
 	success("Connected")
 	_, controller := framework.NewInformer(
@@ -67,8 +69,8 @@ func main() {
 		&api.Service{},
 		time.Millisecond*100,
 		framework.ResourceEventHandlerFuncs{
-			AddFunc:    serviceAdded(c),
-			DeleteFunc: serviceDeleted(c),
+			AddFunc:    serviceAdded(c, oc),
+			DeleteFunc: serviceDeleted(c, oc),
 		},
 	)
 	stop := make(chan struct{})
@@ -78,23 +80,25 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-func serviceAdded(c *kclient.Client) func(obj interface{}) {
+func serviceAdded(c *kclient.Client, oc *osclient.Client) func(obj interface{}) {
 	return func(obj interface{}) {
 		svc := obj.(*api.Service)
-		addExposeRule(c, svc, svc.Namespace)
+		addExposeRule(c, oc, svc, svc.Namespace)
 	}
 }
 
-func serviceDeleted(c *kclient.Client) func(obj interface{}) {
+func serviceDeleted(c *kclient.Client, oc *osclient.Client) func(obj interface{}) {
 	return func(obj interface{}) {
 		svc, ok := obj.(cache.DeletedFinalStateUnknown)
 		if ok {
 			// service key is in the form namespace/name
-			deleteExposeRule(svc.Key, c)
+			ns := strings.Split(svc.Key, "/")[0]
+			name := strings.Split(svc.Key, "/")[1]
+			deleteExposeRule(ns, name, c, oc)
 		} else {
 			svc, ok := obj.(*api.Service)
 			if ok {
-				deleteExposeRule(svc.ObjectMeta.Name, c)
+				deleteExposeRule(svc.Namespace, svc.ObjectMeta.Name, c, oc)
 			} else {
 				log.Fatalf("Error getting details of deleted service")
 			}
@@ -121,13 +125,18 @@ func addExposeRule(c *kclient.Client, oc *osclient.Client, svc *api.Service, ns 
 
 	switch environment.Data[exposeRule] {
 	case ingress:
-		err := createIngress(ns, d, svc, c)
-		if err != nil {
-			log.Printf("Unable to create ingress rule for service %s %v", svc.ObjectMeta.Name, err)
+		if util.TypeOfMaster(c) == util.OpenShift {
+			log.Println("Ingress is not currently supported on OpenShift, please use Routes")
+		} else {
+			err := createIngress(ns, d, svc, c)
+			if err != nil {
+				log.Printf("Unable to create ingress rule for service %s %v", svc.ObjectMeta.Name, err)
+			}
 		}
+
 	case route:
 		if util.TypeOfMaster(c) != util.OpenShift {
-			log.Println("Routes are only available on OpenShift, please look at using Ingress")
+			log.Println("Routes are only available on OpenShift, please use Ingress")
 		} else {
 			createRoute(ns, d, svc, c, oc)
 		}
@@ -142,11 +151,17 @@ func addExposeRule(c *kclient.Client, oc *osclient.Client, svc *api.Service, ns 
 	}
 }
 
-func deleteExposeRule(svc string, c *kclient.Client) error {
+func deleteExposeRule(ns string, name string, c *kclient.Client, oc *osclient.Client) error {
 
-	ns := strings.Split(svc, "/")[0]
-	name := strings.Split(svc, "/")[1]
+	if util.TypeOfMaster(c) == util.Kubernetes {
+		return deleteIngress(ns, name, c)
+	} else if util.TypeOfMaster(c) == util.OpenShift {
+		return deleteRoute(ns, name, oc)
+	}
+	return nil
+}
 
+func deleteIngress(ns string, name string, c *kclient.Client) error {
 	rapi.AddToScheme(kapi.Scheme)
 	rapiv1.AddToScheme(kapi.Scheme)
 
@@ -157,7 +172,22 @@ func deleteExposeRule(svc string, c *kclient.Client) error {
 		return err
 	}
 
-	success("Deleted ingress rule [" + name + "] in namespace [" + ns + "]")
+	successf("Deleted ingress rule %s in namespace %s", name, ns)
+	return nil
+}
+
+func deleteRoute(ns string, name string, c *osclient.Client) error {
+
+	rapi.AddToScheme(kapi.Scheme)
+	rapiv1.AddToScheme(kapi.Scheme)
+
+	err := c.Routes(ns).Delete(name)
+	if err != nil {
+		log.Printf("Failed to delete openshift route %s in namespace %s with error %v", name, ns, err)
+		return err
+	}
+
+	successf("Deleted openshift route %s in namespace %s", name, ns)
 	return nil
 }
 
@@ -280,26 +310,21 @@ func createIngress(ns string, domain string, service *api.Service, c *kclient.Cl
 	return nil
 }
 
-func createRoute(ns string, domain string, service *api.Service, c *kclient.Client, oc *osclient.Client) error {
+func createRoute(ns string, domain string, svc *api.Service, c *kclient.Client, oc *osclient.Client) error {
 
 	rapi.AddToScheme(kapi.Scheme)
 	rapiv1.AddToScheme(kapi.Scheme)
 
-	rc, err := c.Services(ns).List(kapi.ListOptions{})
-	if err != nil {
-		log.Printf("Failed to load services in namespace %s with error %v", ns, err)
-		return err
-	}
+	name := svc.ObjectMeta.Name
+
 	var labels = make(map[string]string)
 	labels["provider"] = "fabric8"
 
-	items := rc.Items
-	for _, service := range items {
-		// TODO use the external load balancer as a way to know if we should create a route?
-		name := service.ObjectMeta.Name
+	serviceLabels := svc.ObjectMeta.Labels
+	if serviceLabels["expose"] == "true" {
 		if name != "kubernetes" {
 			routes := oc.Routes(ns)
-			_, err = routes.Get(name)
+			_, err := routes.Get(name)
 			if err != nil {
 				hostName := name + "." + domain
 				route := rapi.Route{
@@ -318,9 +343,13 @@ func createRoute(ns string, domain string, service *api.Service, c *kclient.Clie
 					log.Printf("Failed to create the route %s with error %v", name, err)
 					return err
 				}
+				successf("Exposed service %s using openshift route", name)
 			}
 		}
+	} else {
+		log.Printf("Skipping service %s", name)
 	}
+
 	return nil
 }
 
