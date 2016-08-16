@@ -1,4 +1,4 @@
-package: github.com/fabric8io/exposer
+package: github.com/fabric8io/exposecontroller
 import:
 - package: github.com/daviddengcn/go-colortext
 - package: github.com/openshift/origin

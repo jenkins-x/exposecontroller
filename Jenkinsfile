@@ -9,7 +9,12 @@ node{
 
     stage 'build binary'
 
-    sh "mkdir -p ../go/src/github.com/fabric8io/exposecontroller; cp -R ../${env.JOB_NAME}/. ../go/src/github.com/fabric8io/exposecontroller/; cd ../go/src/github.com/fabric8io/exposecontroller; make build test lint"
+    sh """
+    mkdir -p ../go/src/github.com/fabric8io/exposecontroller; 
+    cp -R ../${env.JOB_NAME}/. ../go/src/github.com/fabric8io/exposecontroller/; 
+    cd ../go/src/github.com/fabric8io/exposecontroller; 
+    make
+    """
 
     sh "cp -R ../go/src/github.com/fabric8io/exposecontroller/bin ."
 
