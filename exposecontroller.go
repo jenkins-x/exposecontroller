@@ -1,3 +1,18 @@
+/**
+ * Copyright (C) 2015 Red Hat, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package main
 
 import (
@@ -9,14 +24,17 @@ import (
 	"time"
 
 	"github.com/daviddengcn/go-colortext"
+	"github.com/fabric8io/exposecontroller/client"
+	"github.com/fabric8io/exposecontroller/util"
 	rapi "github.com/openshift/origin/pkg/route/api"
 	rapiv1 "github.com/openshift/origin/pkg/route/api/v1"
 	"k8s.io/kubernetes/pkg/api"
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
+	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/controller/framework"
+	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/watch"
 )
@@ -32,10 +50,10 @@ const (
 )
 
 func main() {
-	c, err := client.NewInCluster()
-	if err != nil {
-		log.Fatalf("Cannot connect to api server: %v", err)
-	}
+
+	f := cmdutil.NewFactory(nil)
+	c, _ := client.NewClient(f)
+
 	success("Connected")
 	_, controller := framework.NewInformer(
 		&cache.ListWatch{
@@ -60,17 +78,16 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-func serviceAdded(c *client.Client) func(obj interface{}) {
+func serviceAdded(c *kclient.Client) func(obj interface{}) {
 	return func(obj interface{}) {
 		svc := obj.(*api.Service)
 		addExposeRule(c, svc, svc.Namespace)
 	}
 }
 
-func serviceDeleted(c *client.Client) func(obj interface{}) {
+func serviceDeleted(c *kclient.Client) func(obj interface{}) {
 	return func(obj interface{}) {
 		svc, ok := obj.(cache.DeletedFinalStateUnknown)
-
 		if ok {
 			// service key is in the form namespace/name
 			deleteExposeRule(svc.Key, c)
@@ -85,7 +102,7 @@ func serviceDeleted(c *client.Client) func(obj interface{}) {
 	}
 }
 
-func addExposeRule(c *client.Client, svc *api.Service, ns string) {
+func addExposeRule(c *kclient.Client, svc *api.Service, ns string) {
 	log.Printf("Found service %s in namespace %s", svc.ObjectMeta.Name, ns)
 	currentNs := os.Getenv("KUBERNETES_NAMESPACE")
 	if len(currentNs) <= 0 {
@@ -109,7 +126,10 @@ func addExposeRule(c *client.Client, svc *api.Service, ns string) {
 			log.Printf("Unable to create ingress rule for service %s %v", svc.ObjectMeta.Name, err)
 		}
 	case route:
-		log.Println("Not yet implemented")
+		if util.TypeOfMaster(c) != util.OpenShift {
+			log.Println("Not yet implemented")
+		}
+
 	case nodePort:
 		useNodePort(ns, svc, c)
 
@@ -121,7 +141,7 @@ func addExposeRule(c *client.Client, svc *api.Service, ns string) {
 	}
 }
 
-func deleteExposeRule(svc string, c *client.Client) error {
+func deleteExposeRule(svc string, c *kclient.Client) error {
 
 	ns := strings.Split(svc, "/")[0]
 	name := strings.Split(svc, "/")[1]
@@ -140,7 +160,7 @@ func deleteExposeRule(svc string, c *client.Client) error {
 	return nil
 }
 
-func useNodePort(ns string, svc *api.Service, c *client.Client) error {
+func useNodePort(ns string, svc *api.Service, c *kclient.Client) error {
 	serviceLabels := svc.ObjectMeta.Labels
 	if serviceLabels["expose"] == "true" {
 		svc.Spec.Type = api.ServiceTypeNodePort
@@ -155,7 +175,7 @@ func useNodePort(ns string, svc *api.Service, c *client.Client) error {
 	return nil
 }
 
-func useLoadBalancer(ns string, svc *api.Service, c *client.Client) error {
+func useLoadBalancer(ns string, svc *api.Service, c *kclient.Client) error {
 	serviceLabels := svc.ObjectMeta.Labels
 	if serviceLabels["expose"] == "true" {
 		svc.Spec.Type = api.ServiceTypeLoadBalancer
@@ -170,7 +190,7 @@ func useLoadBalancer(ns string, svc *api.Service, c *client.Client) error {
 	return nil
 }
 
-func createIngress(ns string, domain string, service *api.Service, c *client.Client) error {
+func createIngress(ns string, domain string, service *api.Service, c *kclient.Client) error {
 	rapi.AddToScheme(kapi.Scheme)
 	rapiv1.AddToScheme(kapi.Scheme)
 
