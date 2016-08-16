@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daviddengcn/go-colortext"
 	rapi "github.com/openshift/origin/pkg/route/api"
 	rapiv1 "github.com/openshift/origin/pkg/route/api/v1"
 	"k8s.io/kubernetes/pkg/api"
@@ -21,7 +22,7 @@ import (
 
 const (
 	domain             = "domain"
-	exposerRule        = "exposer-rule"
+	exposeRule         = "expose-rule"
 	fabric8Environment = "fabric8-environment"
 	ingress            = "ingress"
 	loadBalancer       = "load-balancer"
@@ -34,7 +35,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Cannot connect to api server: %v", err)
 	}
-	log.Printf("Connected")
+	success("Connected")
 	_, controller := framework.NewInformer(
 		&cache.ListWatch{
 			ListFunc: func(options api.ListOptions) (runtime.Object, error) {
@@ -48,7 +49,7 @@ func main() {
 		time.Millisecond*100,
 		framework.ResourceEventHandlerFuncs{
 			AddFunc:    serviceAdded(c),
-			DeleteFunc: serviceDeleted,
+			DeleteFunc: serviceDeleted(c),
 		},
 	)
 	stop := make(chan struct{})
@@ -61,28 +62,30 @@ func main() {
 func serviceAdded(c *client.Client) func(obj interface{}) {
 	return func(obj interface{}) {
 		svc := obj.(*api.Service)
-		addExposerRule(c, svc, svc.Namespace)
+		addExposeRule(c, svc, svc.Namespace)
 	}
 }
 
-func serviceDeleted(obj interface{}) {
-	svc, ok := obj.(cache.DeletedFinalStateUnknown)
+func serviceDeleted(c *client.Client) func(obj interface{}) {
+	return func(obj interface{}) {
+		svc, ok := obj.(cache.DeletedFinalStateUnknown)
 
-	if ok {
-		// service key is in the form namespace/name
-		deleteExposerRule(svc.Key)
-	} else {
-		svc, ok := obj.(*api.Service)
 		if ok {
-			deleteExposerRule(svc.ObjectMeta.Name)
+			// service key is in the form namespace/name
+			deleteExposeRule(svc.Key, c)
 		} else {
-			log.Fatalf("Error getting details of deleted service")
+			svc, ok := obj.(*api.Service)
+			if ok {
+				deleteExposeRule(svc.ObjectMeta.Name, c)
+			} else {
+				log.Fatalf("Error getting details of deleted service")
+			}
 		}
 	}
 }
 
-func addExposerRule(c *client.Client, svc *api.Service, ns string) {
-	log.Println("Service created [" + svc.ObjectMeta.Name + "] in namespace [" + ns + "]")
+func addExposeRule(c *client.Client, svc *api.Service, ns string) {
+	log.Println("Found service [" + svc.ObjectMeta.Name + "] in namespace [" + ns + "]")
 	currentNs := os.Getenv("KUBERNETES_NAMESPACE")
 	if len(currentNs) <= 0 {
 		log.Fatalf("No KUBERNETES_NAMESPACE env var set")
@@ -90,21 +93,20 @@ func addExposerRule(c *client.Client, svc *api.Service, ns string) {
 
 	environment, err := c.ConfigMaps(currentNs).Get(fabric8Environment)
 	if err != nil {
-		log.Fatalf("No ConfigMap with name [" + fabric8Environment + "] found in namespace [" + currentNs + "].  Was the exposer namespace setup by gofabric8?")
+		log.Fatalf("No ConfigMap with name [" + fabric8Environment + "] found in namespace [" + currentNs + "].  Was the exposecontroller namespace setup by gofabric8?")
 	}
 
 	d, ok := environment.Data[domain]
 	if !ok {
-		log.Fatalf("No ConfigMap data with name [" + domain + "] found in namespace [" + currentNs + "].  Was the exposer namespace setup by gofabric8?")
+		log.Fatalf("No ConfigMap data with name [" + domain + "] found in namespace [" + currentNs + "].  Was the exposecontroller namespace setup by gofabric8?")
 	}
 
-	switch environment.Data[exposerRule] {
+	switch environment.Data[exposeRule] {
 	case ingress:
 		err := createIngress(ns, d, svc, c)
 		if err != nil {
 			log.Fatalf("Unable to create ingress rule for service " + svc.ObjectMeta.Name)
 		}
-		log.Println("Creating Ingress")
 	case route:
 		log.Println("Creating OpenShift Route")
 	case nodePort:
@@ -112,17 +114,27 @@ func addExposerRule(c *client.Client, svc *api.Service, ns string) {
 	case loadBalancer:
 		log.Println("Adapting Service type to be LoadBalancer, this can take a few minutes to ve create by cloud provider")
 	default:
-		log.Fatalf("No match for [" + environment.Data[exposerRule] + "] exposer-rule found.  Was the exposer namespace setup by gofabric8?")
+		log.Fatalf("No match for [" + environment.Data[exposeRule] + "] expose-rule found.  Was the exposecontroller namespace setup by gofabric8?")
 	}
 }
 
-func deleteExposerRule(svc string) {
+func deleteExposeRule(svc string, c *client.Client) error {
 
 	ns := strings.Split(svc, "/")[0]
 	name := strings.Split(svc, "/")[1]
 
-	log.Println("Service deleted [" + name + "] in namespace [" + ns + "]")
+	rapi.AddToScheme(kapi.Scheme)
+	rapiv1.AddToScheme(kapi.Scheme)
 
+	ingressClient := c.Extensions().Ingress(ns)
+	err := ingressClient.Delete(name, nil)
+	if err != nil {
+		log.Printf("Failed to delete ingress in namespace %s with error %v", ns, err)
+		return err
+	}
+
+	success("Deleted ingress rule [" + name + "] in namespace [" + ns + "]")
+	return nil
 }
 
 func createIngress(ns string, domain string, service *api.Service, c *client.Client) error {
@@ -141,12 +153,11 @@ func createIngress(ns string, domain string, service *api.Service, c *client.Cli
 
 	name := service.ObjectMeta.Name
 	serviceSpec := service.Spec
+	serviceLabels := service.ObjectMeta.Labels
 
 	found := false
 
-	// for now lets use the type of the service to know if we should create an ingress
-	// TODO we should probably add an annotation to disable ingress creation
-	if name != "jenkinshift" {
+	if serviceLabels["expose"] == "true" {
 		for _, ingress := range ingresses.Items {
 			if ingress.GetName() == name {
 				found = true
@@ -206,8 +217,17 @@ func createIngress(ns string, domain string, service *api.Service, c *client.Cli
 					log.Printf("Failed to create the ingress %s with error %v", name, err)
 					return err
 				}
+				success("Exposed service " + name + " using ingress rule")
 			}
 		}
+	} else {
+		log.Printf("Skipping service [" + name + "]")
 	}
 	return nil
+}
+
+func success(msg string) {
+	ct.ChangeColor(ct.Green, false, ct.None, false)
+	log.Printf(msg)
+	ct.ResetColor()
 }
