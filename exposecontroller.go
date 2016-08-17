@@ -40,7 +40,7 @@ import (
 const (
 	domain             = "domain"
 	exposeRule         = "expose-rule"
-	exposeControllerCM = "exposecontroller-cm"
+	exposeControllerCM = "exposecontroller"
 	ingress            = "ingress"
 	loadBalancer       = "load-balancer"
 	nodePort           = "node-port"
