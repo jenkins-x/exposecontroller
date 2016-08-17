@@ -7,7 +7,7 @@ Automatically expose services creating ingress rules, openshift routes or modify
 
 If you're not using [gofabric8](https://github.com/fabric8io/gofabric8) to setup your environment then you'll need to create a `configmap` in oder to specify the approach `exposecontroller` will use to configure accessing your services.
 
-___NOTE___ if you have used [gofabric8](https://github.com/fabric8io/gofabric8) you can skip the `configmap` creation below as it will create it for you.
+___NOTE___ if you have used [gofabric8](https://github.com/fabric8io/gofabric8) you can skip the `configmap` creation below as it will be created for you.
 
 When using either Kubernetes Ingress or OpenShift Routes you will need to set the domain that you've used with your DNS provider (fabric8 uses [cloudflare](https://www.cloudflare.com))
 
@@ -37,11 +37,11 @@ EOF
 
 __Kubernetes__
 ```
-kubectl run exposer --image=fabric8/exposecontroller
+kubectl run exposecontroller --image=fabric8/exposecontroller
 ```
 __OpenShift__
 ```
-oc run exposer --image=fabric8/exposecontroller
+oc run exposecontroller --image=fabric8/exposecontroller
 ```
 
 ## Label
