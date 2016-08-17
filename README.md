@@ -13,13 +13,13 @@ When using either Kubernetes Ingress or OpenShift Routes you will need to set th
 
 You also need to specify an `expose-rule` type that you want the __exposecontroller__ to use.
 
-__types__
+### types
 - `ingress` - Kubernetes Ingress [see](http://kubernetes.io/docs/user-guide/ingress/)
 - `load-balancer` - Cloud provider external loadbalancer [see](http://kubernetes.io/docs/user-guide/load-balancer/)
 - `node-port` - Recomended for local development using minikube / minishift without Ingress or Router running [see](http://kubernetes.io/docs/user-guide/services/#type-nodeport)
 - `route` - OpenShift Route [see](https://docs.openshift.com/enterprise/3.2/dev_guide/routes.html)
 
-__example...__
+### example
 
 ```
 cat <<EOF | kubectl create -f -
@@ -35,11 +35,11 @@ EOF
 
 ## Run
 
-__Kubernetes__
+### Kubernetes
 ```
 kubectl run exposecontroller --image=fabric8/exposecontroller
 ```
-__OpenShift__
+### OpenShift
 ```
 oc run exposecontroller --image=fabric8/exposecontroller
 ```
