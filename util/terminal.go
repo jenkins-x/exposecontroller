@@ -17,6 +17,7 @@ package util
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/daviddengcn/go-colortext"
@@ -27,11 +28,11 @@ func Infof(msg string, args ...interface{}) {
 }
 
 func Info(msg string) {
-	fmt.Print(msg)
+	log.Print(msg)
 }
 
 func Blank() {
-	fmt.Println()
+	log.Println()
 }
 
 func Warnf(msg string, args ...interface{}) {
@@ -40,7 +41,7 @@ func Warnf(msg string, args ...interface{}) {
 
 func Warn(msg string) {
 	ct.ChangeColor(ct.Yellow, false, ct.None, false)
-	fmt.Print(msg)
+	log.Print(msg)
 	ct.ResetColor()
 }
 
@@ -50,7 +51,7 @@ func Errorf(msg string, args ...interface{}) {
 
 func Error(msg string) {
 	ct.ChangeColor(ct.Red, true, ct.None, false)
-	fmt.Print(msg)
+	log.Print(msg)
 	ct.ResetColor()
 }
 
@@ -60,14 +61,14 @@ func Fatalf(msg string, args ...interface{}) {
 
 func Fatal(msg string) {
 	ct.ChangeColor(ct.Red, true, ct.None, false)
-	fmt.Print(msg)
+	log.Print(msg)
 	ct.ResetColor()
 	os.Exit(1)
 }
 
 func Success(msg string) {
 	ct.ChangeColor(ct.Green, false, ct.None, false)
-	fmt.Print(msg)
+	log.Print(msg)
 	ct.ResetColor()
 }
 
@@ -77,7 +78,7 @@ func Successf(msg string, args ...interface{}) {
 
 func Failure(msg string) {
 	ct.ChangeColor(ct.Red, false, ct.None, false)
-	fmt.Print(msg)
+	log.Print(msg)
 	ct.ResetColor()
 }
 

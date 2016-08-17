@@ -16,14 +16,11 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
-	"github.com/daviddengcn/go-colortext"
 	"github.com/fabric8io/exposecontroller/client"
 	"github.com/fabric8io/exposecontroller/util"
 	osclient "github.com/openshift/origin/pkg/client"
@@ -43,11 +40,13 @@ import (
 const (
 	domain             = "domain"
 	exposeRule         = "expose-rule"
-	fabric8Environment = "fabric8-environment"
+	exposeControllerCM = "exposecontroller-cm"
 	ingress            = "ingress"
 	loadBalancer       = "load-balancer"
 	nodePort           = "node-port"
 	route              = "route"
+	resyncPeriod       = time.Millisecond * 100
+	exposeLabel        = "expose=true"
 )
 
 func main() {
@@ -55,8 +54,9 @@ func main() {
 	f := cmdutil.NewFactory(nil)
 	c, cfg := client.NewClient(f)
 	oc, _ := client.NewOpenShiftClient(cfg)
+	currentNs, _, _ := f.DefaultNamespace()
 
-	success("Connected")
+	util.Successf("Connected")
 	_, controller := framework.NewInformer(
 		&cache.ListWatch{
 			ListFunc: func(options api.ListOptions) (runtime.Object, error) {
@@ -67,10 +67,10 @@ func main() {
 			},
 		},
 		&api.Service{},
-		time.Millisecond*100,
+		resyncPeriod,
 		framework.ResourceEventHandlerFuncs{
-			AddFunc:    serviceAdded(c, oc),
-			DeleteFunc: serviceDeleted(c, oc),
+			AddFunc:    serviceAdded(c, oc, currentNs),
+			DeleteFunc: serviceDeleted(c, oc, currentNs),
 		},
 	)
 	stop := make(chan struct{})
@@ -80,25 +80,25 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-func serviceAdded(c *kclient.Client, oc *osclient.Client) func(obj interface{}) {
+func serviceAdded(c *kclient.Client, oc *osclient.Client, currentNs string) func(obj interface{}) {
 	return func(obj interface{}) {
 		svc := obj.(*api.Service)
-		addExposeRule(c, oc, svc, svc.Namespace)
+		addExposeRule(c, oc, svc, currentNs)
 	}
 }
 
-func serviceDeleted(c *kclient.Client, oc *osclient.Client) func(obj interface{}) {
+func serviceDeleted(c *kclient.Client, oc *osclient.Client, currentNs string) func(obj interface{}) {
 	return func(obj interface{}) {
 		svc, ok := obj.(cache.DeletedFinalStateUnknown)
 		if ok {
 			// service key is in the form namespace/name
 			ns := strings.Split(svc.Key, "/")[0]
 			name := strings.Split(svc.Key, "/")[1]
-			deleteExposeRule(ns, name, c, oc)
+			deleteExposeRule(ns, name, c, oc, currentNs)
 		} else {
 			svc, ok := obj.(*api.Service)
 			if ok {
-				deleteExposeRule(svc.Namespace, svc.ObjectMeta.Name, c, oc)
+				deleteExposeRule(svc.Namespace, svc.ObjectMeta.Name, c, oc, currentNs)
 			} else {
 				log.Fatalf("Error getting details of deleted service")
 			}
@@ -106,16 +106,12 @@ func serviceDeleted(c *kclient.Client, oc *osclient.Client) func(obj interface{}
 	}
 }
 
-func addExposeRule(c *kclient.Client, oc *osclient.Client, svc *api.Service, ns string) {
-	log.Printf("Found service %s in namespace %s", svc.ObjectMeta.Name, ns)
-	currentNs := os.Getenv("KUBERNETES_NAMESPACE")
-	if len(currentNs) <= 0 {
-		log.Fatalf("No KUBERNETES_NAMESPACE env var set")
-	}
+func addExposeRule(c *kclient.Client, oc *osclient.Client, svc *api.Service, currentNs string) {
+	log.Printf("Found service %s in namespace %s", svc.ObjectMeta.Name, svc.Namespace)
 
-	environment, err := c.ConfigMaps(currentNs).Get(fabric8Environment)
+	environment, err := c.ConfigMaps(currentNs).Get(exposeControllerCM)
 	if err != nil {
-		log.Fatalf("No ConfigMap with name %s found in namespace %s.  Was the exposecontroller namespace setup by gofabric8? %v", fabric8Environment, currentNs, err)
+		log.Fatalf("No ConfigMap with name %s found in namespace %s.  Was the exposecontroller namespace setup by gofabric8? %v", exposeControllerCM, currentNs, err)
 	}
 
 	d, ok := environment.Data[domain]
@@ -128,7 +124,7 @@ func addExposeRule(c *kclient.Client, oc *osclient.Client, svc *api.Service, ns 
 		if util.TypeOfMaster(c) == util.OpenShift {
 			log.Println("Ingress is not currently supported on OpenShift, please use Routes")
 		} else {
-			err := createIngress(ns, d, svc, c)
+			err := createIngress(svc.Namespace, d, svc, c)
 			if err != nil {
 				log.Printf("Unable to create ingress rule for service %s %v", svc.ObjectMeta.Name, err)
 			}
@@ -138,20 +134,20 @@ func addExposeRule(c *kclient.Client, oc *osclient.Client, svc *api.Service, ns 
 		if util.TypeOfMaster(c) != util.OpenShift {
 			log.Println("Routes are only available on OpenShift, please use Ingress")
 		} else {
-			createRoute(ns, d, svc, c, oc)
+			createRoute(svc.Namespace, d, svc, c, oc)
 		}
 	case nodePort:
-		useNodePort(ns, svc, c)
+		useNodePort(svc.Namespace, svc, c)
 
 	case loadBalancer:
-		useLoadBalancer(ns, svc, c)
+		useLoadBalancer(svc.Namespace, svc, c)
 
 	default:
 		log.Fatalf("No match for %s expose-rule found.  Was the exposecontroller namespace setup by gofabric8?", environment.Data[exposeRule])
 	}
 }
 
-func deleteExposeRule(ns string, name string, c *kclient.Client, oc *osclient.Client) error {
+func deleteExposeRule(ns string, name string, c *kclient.Client, oc *osclient.Client, currentNs string) error {
 
 	if util.TypeOfMaster(c) == util.Kubernetes {
 		return deleteIngress(ns, name, c)
@@ -172,7 +168,7 @@ func deleteIngress(ns string, name string, c *kclient.Client) error {
 		return err
 	}
 
-	successf("Deleted ingress rule %s in namespace %s", name, ns)
+	util.Successf("Deleted ingress rule %s in namespace %s", name, ns)
 	return nil
 }
 
@@ -187,20 +183,21 @@ func deleteRoute(ns string, name string, c *osclient.Client) error {
 		return err
 	}
 
-	successf("Deleted openshift route %s in namespace %s", name, ns)
+	util.Successf("Deleted openshift route %s in namespace %s", name, ns)
 	return nil
 }
 
 func useNodePort(ns string, svc *api.Service, c *kclient.Client) error {
 	serviceLabels := svc.ObjectMeta.Labels
-	if serviceLabels["expose"] == "true" {
+	exposeLabelKey, exposeLabelValue := getExposeLabel()
+	if serviceLabels[exposeLabelKey] == exposeLabelValue {
 		svc.Spec.Type = api.ServiceTypeNodePort
 		svc, err := c.Services(ns).Update(svc)
 		if err != nil {
 			log.Printf("Unable to update service %s with NodePort %v", svc.ObjectMeta.Name, err)
 			return err
 		}
-		successf("Exposed service %s using NodePort", svc.ObjectMeta.Name)
+		util.Successf("Exposed service %s using NodePort", svc.ObjectMeta.Name)
 	}
 	log.Printf("Skipping service %s", svc.ObjectMeta.Name)
 	return nil
@@ -208,14 +205,15 @@ func useNodePort(ns string, svc *api.Service, c *kclient.Client) error {
 
 func useLoadBalancer(ns string, svc *api.Service, c *kclient.Client) error {
 	serviceLabels := svc.ObjectMeta.Labels
-	if serviceLabels["expose"] == "true" {
+	exposeLabelKey, exposeLabelValue := getExposeLabel()
+	if serviceLabels[exposeLabelKey] == exposeLabelValue {
 		svc.Spec.Type = api.ServiceTypeLoadBalancer
 		svc, err := c.Services(ns).Update(svc)
 		if err != nil {
 			log.Printf("Unable to update service %s with LoadBalancer %v", svc.ObjectMeta.Name, err)
 			return err
 		}
-		successf("Exposed service %s using LoadBalancer. This can take a few minutes to be create by cloud provider", svc.ObjectMeta.Name)
+		util.Successf("Exposed service %s using LoadBalancer. This can take a few minutes to be create by cloud provider", svc.ObjectMeta.Name)
 	}
 	log.Printf("Skipping service %s", svc.ObjectMeta.Name)
 	return nil
@@ -241,7 +239,8 @@ func createIngress(ns string, domain string, service *api.Service, c *kclient.Cl
 
 	found := false
 
-	if serviceLabels["expose"] == "true" {
+	exposeLabelKey, exposeLabelValue := getExposeLabel()
+	if serviceLabels[exposeLabelKey] == exposeLabelValue {
 		for _, ingress := range ingresses.Items {
 			if ingress.GetName() == name {
 				found = true
@@ -301,7 +300,7 @@ func createIngress(ns string, domain string, service *api.Service, c *kclient.Cl
 					log.Printf("Failed to create the ingress %s with error %v", name, err)
 					return err
 				}
-				successf("Exposed service %s using ingress rule", name)
+				util.Successf("Exposed service %s using ingress rule", name)
 			}
 		}
 	} else {
@@ -321,7 +320,8 @@ func createRoute(ns string, domain string, svc *api.Service, c *kclient.Client, 
 	labels["provider"] = "fabric8"
 
 	serviceLabels := svc.ObjectMeta.Labels
-	if serviceLabels["expose"] == "true" {
+	exposeLabelKey, exposeLabelValue := getExposeLabel()
+	if serviceLabels[exposeLabelKey] == exposeLabelValue {
 		if name != "kubernetes" {
 			routes := oc.Routes(ns)
 			_, err := routes.Get(name)
@@ -343,23 +343,17 @@ func createRoute(ns string, domain string, svc *api.Service, c *kclient.Client, 
 					log.Printf("Failed to create the route %s with error %v", name, err)
 					return err
 				}
-				successf("Exposed service %s using openshift route", name)
+				util.Successf("Exposed service %s using openshift route", name)
 			}
 		}
 	} else {
 		log.Printf("Skipping service %s", name)
 	}
-
 	return nil
 }
 
-// Successf prints success message
-func successf(msg string, args ...interface{}) {
-	success(fmt.Sprintf(msg, args...))
-}
-
-func success(msg string) {
-	ct.ChangeColor(ct.Green, false, ct.None, false)
-	log.Printf(msg)
-	ct.ResetColor()
+func getExposeLabel() (string, string) {
+	key := strings.Split(exposeLabel, "=")[0]
+	value := strings.Split(exposeLabel, "=")[1]
+	return key, value
 }

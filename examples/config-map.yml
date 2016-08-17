@@ -1,6 +1,6 @@
 apiVersion: "v1"
 data:
-  domain: test.fabric8.io
+  domain: replace.me.io
   exposer-rule: "ingress"
  # exposer-rule: "load-balancer"
  # exposer-rule: "node-port"
@@ -9,6 +9,5 @@ kind: "ConfigMap"
 metadata:
   labels:
     provider: "fabric8"
-    project: "exposer"
-    group: "io.fabric8.devops.apps"
-  name: "fabric8-environment"
+    project: "exposecontroller"
+  name: "exposecontroller-cm"

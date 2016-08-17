@@ -1,0 +1,23 @@
+---
+apiVersion: "extensions/v1beta1"
+kind: "Deployment"
+metadata:
+  labels:
+    provider: "fabric8"
+    project: "exposecontroller"
+  name: "exposecontroller"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      project: "exposecontroller"
+      provider: "fabric8"
+  template:
+    metadata:
+      labels:
+        provider: "fabric8"
+        project: "exposecontroller"
+    spec:
+      containers:
+      - image: "fabric8/exposecontroller"
+        name: "exposecontroller"
