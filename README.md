@@ -3,15 +3,15 @@
 Automatically expose services creating ingress rules, openshift routes or modifying services to use kubernetes nodePort or loadBalancer service types
 
 
-## Configuration
+## Configure
+
+___NOTE___ if you have used [gofabric8](https://github.com/fabric8io/gofabric8) you can skip this and go straight to [Run](#run)
 
 If you're not using [gofabric8](https://github.com/fabric8io/gofabric8) to setup your environment then you'll need to create a `configmap` in oder to specify the approach `exposecontroller` will use to configure accessing your services.
 
-___NOTE___ if you have used [gofabric8](https://github.com/fabric8io/gofabric8) you can skip the `configmap` creation below as it will be created for you.
-
 When using either Kubernetes Ingress or OpenShift Routes you will need to set the domain that you've used with your DNS provider (fabric8 uses [cloudflare](https://www.cloudflare.com))
 
-You also need to specify the `expose-rule` type that you want the __exposecontroller__ to use.
+You also need to specify an `expose-rule` type that you want the __exposecontroller__ to use.
 
 __types__
 - `ingress` - Kubernetes Ingress [see](http://kubernetes.io/docs/user-guide/ingress/)
@@ -19,7 +19,7 @@ __types__
 - `node-port` - Recomended for local development using minikube / minishift without Ingress or Router running [see](http://kubernetes.io/docs/user-guide/services/#type-nodeport)
 - `route` - OpenShift Route [see](https://docs.openshift.com/enterprise/3.2/dev_guide/routes.html)
 
-__For example...__
+__example...__
 
 ```
 cat <<EOF | kubectl create -f -
@@ -68,7 +68,7 @@ cd src/github.com/fabric8io/
 git clone https://github.com/fabric8io/exposecontroller.git
 cd exposecontroller
 
-make
+make bootstrap
 ```
 
 ### Run locally
