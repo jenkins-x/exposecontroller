@@ -2,16 +2,8 @@
 
 Automatically expose services creating ingress rules, openshift routes or modifying services to use kubernetes nodePort or loadBalancer service types
 
-__Kubernetes__
-```
-kubectl run exposer --image=fabric8/exposecontroller
-```
-__OpenShift__
-```
-oc run exposer --image=fabric8/exposecontroller
-```
 
-### Configuration
+## Configuration
 
 If you're not using [gofabric8](https://github.com/fabric8io/gofabric8) to setup your environment then you'll need to create a `configmap` in oder to specify the approach `exposecontroller` will use to configure accessing your services.
 
@@ -37,9 +29,22 @@ data:
   domain: replace.me.io
 kind: "ConfigMap"
 metadata:
-  name: "fabric8-environment"
+  name: "exposecontroller"
 EOF
 ```
+
+## Run
+
+__Kubernetes__
+```
+kubectl run exposer --image=fabric8/exposecontroller
+```
+__OpenShift__
+```
+oc run exposer --image=fabric8/exposecontroller
+```
+
+## Label
 
 Now label your service with `expose=true` in [CD Pipelines](https://blog.fabric8.io/create-and-explore-continuous-delivery-pipelines-with-fabric8-and-jenkins-on-openshift-661aa82cb45a#.lx020ys70) or with CLI...
 
