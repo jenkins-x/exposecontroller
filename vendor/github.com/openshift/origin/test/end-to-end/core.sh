@@ -15,6 +15,9 @@ os::log::install_errexit
 source "${OS_ROOT}/hack/lib/util/environment.sh"
 os::util::environment::setup_time_vars
 
+source "${OS_ROOT}/hack/lib/test/junit.sh"
+trap os::test::junit::reconcile_output EXIT
+
 TEST_ASSETS="${TEST_ASSETS:-false}"
 
 export VERBOSE=true
@@ -48,6 +51,7 @@ function wait_for_app() {
   wait_for_command '[[ "$(curl -s http://${FRONTEND_IP}:5432/keys/foo)" = "1337" ]]'
 }
 
+os::test::junit::declare_suite_start "end-to-end/core"
 # service dns entry is visible via master service
 # find the IP of the master service by asking the API_HOST to verify DNS is running there
 MASTER_SERVICE_IP="$(dig @${API_HOST} "kubernetes.default.svc.cluster.local." +short A | head -n 1)"
@@ -125,8 +129,9 @@ os::cmd::expect_success "docker push ${DOCKER_REGISTRY}/cache/ruby-22-centos7:la
 echo "[INFO] Pushed ruby-22-centos7"
 
 # verify remote images can be pulled directly from the local registry
-oc import-image --confirm --from=mysql:latest mysql:pullthrough
-docker pull ${DOCKER_REGISTRY}/cache/mysql:pullthrough
+echo "[INFO] Docker pullthrough"
+os::cmd::expect_success "oc import-image --confirm --from=mysql:latest mysql:pullthrough"
+os::cmd::expect_success "docker pull ${DOCKER_REGISTRY}/cache/mysql:pullthrough"
 
 # check to make sure an image-pusher can push an image
 os::cmd::expect_success 'oc policy add-role-to-user system:image-pusher pusher'
@@ -365,6 +370,7 @@ os::cmd::expect_success "oc exec -p ${registry_pod} du /registry > '${LOG_DIR}/p
 # make sure there were changes to the registry's storage
 os::cmd::expect_code "diff ${LOG_DIR}/prune-images.before.txt ${LOG_DIR}/prune-images.after.txt" 1
 
+os::test::junit::declare_suite_end
 unset VERBOSE
 
 # UI e2e tests can be found in assets/test/e2e

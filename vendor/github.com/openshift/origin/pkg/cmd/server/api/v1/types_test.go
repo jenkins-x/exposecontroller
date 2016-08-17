@@ -272,6 +272,7 @@ oauthConfig:
       apiVersion: v1
       challengeURL: ""
       clientCA: ""
+      clientCommonNames: null
       emailHeaders: null
       headers: null
       kind: RequestHeaderIdentityProvider
@@ -458,6 +459,8 @@ servingInfo:
     keyFile: ""
     names: null
   requestTimeoutSeconds: 0
+volumeConfig:
+  dynamicProvisioningEnabled: false
 `
 )
 
@@ -663,6 +666,9 @@ func TestMasterConfig(t *testing.T) {
 				},
 			},
 			PluginOrderOverride: []string{"plugin"}, // explicitly set this field because it's omitempty
+		},
+		VolumeConfig: internal.MasterVolumeConfig{
+			DynamicProvisioningEnabled: false,
 		},
 	}
 	serializedConfig, err := writeYAML(config)

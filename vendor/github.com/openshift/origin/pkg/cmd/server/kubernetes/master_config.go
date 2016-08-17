@@ -26,11 +26,14 @@ import (
 	"k8s.io/kubernetes/pkg/genericapiserver"
 	kubeletclient "k8s.io/kubernetes/pkg/kubelet/client"
 	"k8s.io/kubernetes/pkg/master"
+	"k8s.io/kubernetes/pkg/registry/cachesize"
 	"k8s.io/kubernetes/pkg/storage"
 	etcdstorage "k8s.io/kubernetes/pkg/storage/etcd"
 	kerrors "k8s.io/kubernetes/pkg/util/errors"
 	"k8s.io/kubernetes/pkg/util/intstr"
 	knet "k8s.io/kubernetes/pkg/util/net"
+	"k8s.io/kubernetes/pkg/util/sets"
+	"k8s.io/kubernetes/plugin/pkg/admission/namespace/lifecycle"
 	saadmit "k8s.io/kubernetes/plugin/pkg/admission/serviceaccount"
 
 	"github.com/openshift/origin/pkg/cmd/flagtypes"
@@ -44,7 +47,7 @@ import (
 )
 
 // AdmissionPlugins is the full list of admission control plugins to enable in the order they must run
-var AdmissionPlugins = []string{"RunOnceDuration", "NamespaceLifecycle", "PodNodeConstraints", "OriginPodNodeEnvironment", overrideapi.PluginName, serviceadmit.ExternalIPPluginName, "LimitRanger", "ServiceAccount", "SecurityContextConstraint", "BuildDefaults", "BuildOverrides", "ResourceQuota", "SCCExecRestrictions"}
+var AdmissionPlugins = []string{"RunOnceDuration", lifecycle.PluginName, "PodNodeConstraints", "OriginPodNodeEnvironment", overrideapi.PluginName, serviceadmit.ExternalIPPluginName, "LimitRanger", "ServiceAccount", "SecurityContextConstraint", "BuildDefaults", "BuildOverrides", "ResourceQuota", "SCCExecRestrictions"}
 
 // MasterConfig defines the required values to start a Kubernetes master
 type MasterConfig struct {
@@ -103,6 +106,11 @@ func BuildKubernetesMasterConfig(options configapi.MasterConfig, requestContextM
 	server.ServiceNodePortRange = *portRange
 	server.AdmissionControl = strings.Join(AdmissionPlugins, ",")
 	server.EnableLogsSupport = false // don't expose server logs
+	server.EnableProfiling = false
+	server.APIPrefix = KubeAPIPrefix
+	server.APIGroupPrefix = KubeAPIGroupPrefix
+	server.SecurePort = port
+	server.MasterCount = options.KubernetesMasterConfig.MasterCount
 
 	// resolve extended arguments
 	// TODO: this should be done in config validation (along with the above) so we can provide
@@ -140,6 +148,17 @@ func BuildKubernetesMasterConfig(options configapi.MasterConfig, requestContextM
 	plugins := []admission.Interface{}
 	for _, pluginName := range strings.Split(server.AdmissionControl, ",") {
 		switch pluginName {
+		case lifecycle.PluginName:
+			// We need to include our infrastructure and shared resource namespaces in the immortal namespaces list
+			immortalNamespaces := sets.NewString(kapi.NamespaceDefault)
+			if len(options.PolicyConfig.OpenShiftSharedResourcesNamespace) > 0 {
+				immortalNamespaces.Insert(options.PolicyConfig.OpenShiftSharedResourcesNamespace)
+			}
+			if len(options.PolicyConfig.OpenShiftInfrastructureNamespace) > 0 {
+				immortalNamespaces.Insert(options.PolicyConfig.OpenShiftInfrastructureNamespace)
+			}
+			plugins = append(plugins, lifecycle.NewLifecycle(internalclientset.FromUnversionedClient(kubeClient), immortalNamespaces))
+
 		case serviceadmit.ExternalIPPluginName:
 			// this needs to be moved upstream to be part of core config
 			reject, admit, err := serviceadmit.ParseCIDRRules(options.NetworkConfig.ExternalIPNetworkCIDRs)
@@ -234,6 +253,7 @@ func BuildKubernetesMasterConfig(options configapi.MasterConfig, requestContextM
 
 	m := &master.Config{
 		Config: &genericapiserver.Config{
+
 			PublicAddress: publicAddress,
 			ReadWritePort: port,
 
@@ -249,10 +269,10 @@ func BuildKubernetesMasterConfig(options configapi.MasterConfig, requestContextM
 			RequestContextMapper: requestContextMapper,
 
 			APIGroupVersionOverrides: getAPIGroupVersionOverrides(options),
-			APIPrefix:                KubeAPIPrefix,
-			APIGroupPrefix:           KubeAPIGroupPrefix,
+			APIPrefix:                server.APIPrefix,
+			APIGroupPrefix:           server.APIGroupPrefix,
 
-			MasterCount: options.KubernetesMasterConfig.MasterCount,
+			MasterCount: server.MasterCount,
 
 			// Set the TLS options for proxying to pods and services
 			// Proxying to nodes uses the kubeletClient TLS config (so can provide a different cert, and verify the node hostname)
@@ -263,14 +283,27 @@ func BuildKubernetesMasterConfig(options configapi.MasterConfig, requestContextM
 			},
 
 			Serializer: kapi.Codecs,
+
+			EnableLogsSupport:         server.EnableLogsSupport,
+			EnableProfiling:           server.EnableProfiling,
+			EnableWatchCache:          server.EnableWatchCache,
+			MasterServiceNamespace:    server.MasterServiceNamespace,
+			ExternalHost:              server.ExternalHost,
+			MinRequestTimeout:         server.MinRequestTimeout,
+			KubernetesServiceNodePort: server.KubernetesServiceNodePort,
 		},
 
 		EventTTL: server.EventTTL,
-		//MinRequestTimeout: server.MinRequestTimeout,
 
 		KubeletClient: kubeletClient,
 
 		EnableCoreControllers: true,
+
+		DeleteCollectionWorkers: server.DeleteCollectionWorkers,
+	}
+
+	if server.EnableWatchCache {
+		cachesize.SetWatchCacheSizes(server.WatchCacheSizes)
 	}
 
 	if options.DNSConfig != nil {

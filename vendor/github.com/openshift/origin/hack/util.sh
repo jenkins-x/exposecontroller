@@ -570,10 +570,12 @@ function cleanup_openshift {
 		set -u
 	fi
 
-	if grep -q 'no Docker socket found' "${LOG_DIR}/openshift.log"; then 
+	# TODO soltysh: restore the if back once #8399 is resolved
+	# if grep -q 'no Docker socket found' "${LOG_DIR}/openshift.log"; then
 		# the Docker daemon crashed, we need the logs
-		journalctl --unit docker.service --since -4hours > "${LOG_DIR}/docker.log"
-	fi
+	# journalctl --unit docker.service --since -4hours > "${LOG_DIR}/docker.log"
+	# fi
+	journalctl --unit docker.service --since -15minutes > "${LOG_DIR}/docker.log"
 
 	delete_empty_logs
 	truncate_large_logs
@@ -704,7 +706,7 @@ os::log::errexit() {
 }
 
 os::log::install_errexit() {
-	# trap ERR to provide an error handler whenever a command exits nonzero	this
+	# trap ERR to provide an error handler whenever a command exits nonzero this
 	# is a more verbose version of set -o errexit
 	trap 'os::log::errexit' ERR
 

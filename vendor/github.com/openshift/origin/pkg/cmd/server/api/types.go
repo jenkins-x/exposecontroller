@@ -132,13 +132,19 @@ type NodeConfig struct {
 	IPTablesSyncPeriod string
 
 	// VolumeConfig contains options for configuring volumes on the node.
-	VolumeConfig VolumeConfig
+	VolumeConfig NodeVolumeConfig
 }
 
-// VolumeConfig contains options for configuring volumes on the node.
-type VolumeConfig struct {
+// NodeVolumeConfig contains options for configuring volumes on the node.
+type NodeVolumeConfig struct {
 	// LocalQuota contains options for controlling local volume quota on the node.
 	LocalQuota LocalQuota
+}
+
+// MasterVolumeConfig contains options for configuring volume plugins in the master node.
+type MasterVolumeConfig struct {
+	// DynamicProvisioningEnabled is a boolean that toggles dynamic provisioning off when false, defaults to true
+	DynamicProvisioningEnabled bool
 }
 
 // LocalQuota contains options for controlling local volume quota on the node.
@@ -279,6 +285,9 @@ type MasterConfig struct {
 
 	// NetworkConfig to be passed to the compiled in network plugin
 	NetworkConfig MasterNetworkConfig
+
+	// VolumeConfig contains options for configuring volumes on the node.
+	VolumeConfig MasterVolumeConfig
 }
 
 type ImagePolicyConfig struct {
@@ -742,6 +751,9 @@ type RequestHeaderIdentityProvider struct {
 
 	// ClientCA is a file with the trusted signer certs.  If empty, no request verification is done, and any direct request to the OAuth server can impersonate any identity from this provider, merely by setting a request header.
 	ClientCA string
+	// ClientCommonNames is an optional list of common names to require a match from. If empty, any client certificate validated against the clientCA bundle is considered authoritative.
+	ClientCommonNames []string
+
 	// Headers is the set of headers to check for identity information
 	Headers []string
 	// PreferredUsernameHeaders is the set of headers to check for the preferred username

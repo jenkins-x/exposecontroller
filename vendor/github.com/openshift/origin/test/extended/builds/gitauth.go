@@ -83,6 +83,9 @@ var _ = g.Describe("[builds][Slow] can use private repositories as build input",
 
 		g.By(fmt.Sprintf("expecting build %s to complete successfully", buildName))
 		err = exutil.WaitForABuild(oc.REST().Builds(oc.Namespace()), buildName, exutil.CheckBuildSuccessFn, exutil.CheckBuildFailedFn)
+		if err != nil {
+			exutil.DumpBuildLogs(buildConfigName, oc)
+		}
 		o.Expect(err).NotTo(o.HaveOccurred())
 	}
 
@@ -93,9 +96,9 @@ var _ = g.Describe("[builds][Slow] can use private repositories as build input",
 					sourceSecretName, gitUserName, gitPassword, caCertPath))
 				err := oc.Run("secrets").
 					Args("new-basicauth", sourceSecretName,
-					fmt.Sprintf("--username=%s", gitUserName),
-					fmt.Sprintf("--password=%s", gitPassword),
-					fmt.Sprintf("--ca-cert=%s", caCertPath)).Execute()
+						fmt.Sprintf("--username=%s", gitUserName),
+						fmt.Sprintf("--password=%s", gitPassword),
+						fmt.Sprintf("--ca-cert=%s", caCertPath)).Execute()
 				o.Expect(err).NotTo(o.HaveOccurred())
 				return sourceSecretName
 			})

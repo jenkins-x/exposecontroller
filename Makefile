@@ -34,9 +34,8 @@ build: $(MAIN_GO)
 	$(GO) build -o $(exposecontroller_BIN) $(BUILDFLAGS) $<
 
 bootstrap:
-	$(GO) get -u github.com/golang/lint/golint github.com/mitchellh/gox github.com/alecthomas/gometalinter github.com/fabric8io/gobump
-	gometalinter --install --update
-	GO15VENDOREXPERIMENT=1 glide up
+	$(GO) get -u github.com/Masterminds/glide
+	GO15VENDOREXPERIMENT=1 glide update --strip-vendor --strip-vcs --update-vendored
 
 build-all:
 	gox -verbose \

@@ -153,10 +153,10 @@ var FooAnotherVar proto.Frobber = proto.AnotherVar
 	tmpl := template.Must(
 		template.New("").
 			Funcs(
-			map[string]interface{}{
-				"Name": testNamer.Name,
-				"Raw":  rawNamer.Name,
-			}).
+				map[string]interface{}{
+					"Name": testNamer.Name,
+					"Raw":  rawNamer.Name,
+				}).
 			Parse(tmplText),
 	)
 	buf := &bytes.Buffer{}

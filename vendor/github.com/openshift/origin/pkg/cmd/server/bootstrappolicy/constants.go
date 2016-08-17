@@ -63,6 +63,11 @@ const (
 	RegistryViewerRoleName = "registry-viewer"
 	RegistryEditorRoleName = "registry-editor"
 
+	BuildStrategyDockerRoleName = "system:build-strategy-docker"
+	BuildStrategyCustomRoleName = "system:build-strategy-custom"
+	BuildStrategySourceRoleName = "system:build-strategy-source"
+
+	ImageAuditorRoleName      = "system:image-auditor"
 	ImagePullerRoleName       = "system:image-puller"
 	ImagePusherRoleName       = "system:image-pusher"
 	ImageBuilderRoleName      = "system:image-builder"
@@ -112,6 +117,10 @@ const (
 	RegistryAdminRoleBindingName     = RegistryAdminRoleName + "s"
 	RegistryViewerRoleBindingName    = RegistryViewerRoleName + "s"
 	RegistryEditorRoleBindingName    = RegistryEditorRoleName + "s"
+
+	BuildStrategyDockerRoleBindingName = BuildStrategyDockerRoleName + "-binding"
+	BuildStrategyCustomRoleBindingName = BuildStrategyCustomRoleName + "-binding"
+	BuildStrategySourceRoleBindingName = BuildStrategySourceRoleName + "-binding"
 
 	OpenshiftSharedResourceViewRoleBindingName = OpenshiftSharedResourceViewRoleName + "s"
 )
