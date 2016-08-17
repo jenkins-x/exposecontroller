@@ -34,20 +34,20 @@ cat <<EOF | kubectl create -f -
 apiVersion: "v1"
 data:
   expose-rule: "ingress"
-  domain: test.fabric8.io
+  domain: replace.me.io
 kind: "ConfigMap"
 metadata:
   name: "fabric8-environment"
 EOF
 ```
 
-Now label you service with `expose=true` in [CD Pipelines](https://blog.fabric8.io/create-and-explore-continuous-delivery-pipelines-with-fabric8-and-jenkins-on-openshift-661aa82cb45a#.lx020ys70) or with CLI...
+Now label your service with `expose=true` in [CD Pipelines](https://blog.fabric8.io/create-and-explore-continuous-delivery-pipelines-with-fabric8-and-jenkins-on-openshift-661aa82cb45a#.lx020ys70) or with CLI...
 
 ```
 kubectl label svc foo expose=true
 ```
 
-__exposecontroller__ will use your `expose-rule` in the configmap above to automatically create ingress / routes / nodeports / loadbalacers for your services 
+__exposecontroller__ will use your `expose-rule` in the configmap above to automatically watch for new services and create ingress / routes / nodeports / loadbalacers for you.
 
 ## Building
 
