@@ -45,7 +45,7 @@ const (
 	loadBalancer       = "load-balancer"
 	nodePort           = "node-port"
 	route              = "route"
-	resyncPeriod       = time.Millisecond * 100
+	resyncPeriod       = time.Millisecond * 5000 // lets check every 5 seconds
 	exposeLabel        = "expose=true"
 )
 
@@ -70,6 +70,7 @@ func main() {
 		resyncPeriod,
 		framework.ResourceEventHandlerFuncs{
 			AddFunc:    serviceAdded(c, oc, currentNs),
+			UpdateFunc: serviceUpdated(c, oc, currentNs),
 			DeleteFunc: serviceDeleted(c, oc, currentNs),
 		},
 	)
@@ -84,6 +85,47 @@ func serviceAdded(c *kclient.Client, oc *osclient.Client, currentNs string) func
 	return func(obj interface{}) {
 		svc := obj.(*api.Service)
 		addExposeRule(c, oc, svc, currentNs)
+	}
+}
+
+func serviceUpdated(c *kclient.Client, oc *osclient.Client, currentNs string) func(oldObj interface{}, newObj interface{}) {
+	return func(oldObj interface{}, newObj interface{}) {
+
+		exposeLabelKey, exposeLabelValue := getExposeLabel()
+		oldSvc := oldObj.(*api.Service)
+		oldServiceLabels := oldSvc.ObjectMeta.Labels
+
+		newSvc := newObj.(*api.Service)
+		newServiceLabels := newSvc.ObjectMeta.Labels
+
+		if oldValue, oldFound := oldServiceLabels[exposeLabelKey]; oldFound {
+			if newValue, newFound := newServiceLabels[exposeLabelKey]; !newFound {
+				// delete
+				deleteExposeRule(newSvc.Namespace, newSvc.ObjectMeta.Name, c, oc, currentNs)
+			} else {
+				// if the expose label has changed
+				if oldValue != newValue {
+					if newValue == exposeLabelValue {
+						// add
+						addExposeRule(c, oc, newSvc, currentNs)
+					} else {
+						// delete
+						deleteExposeRule(newSvc.Namespace, newSvc.ObjectMeta.Name, c, oc, currentNs)
+					}
+				}
+			}
+		} else if newValue, newFound := newServiceLabels[exposeLabelKey]; newFound {
+			// if the expose label has changed
+			if oldValue != newValue {
+				if newValue == exposeLabelValue {
+					// add
+					addExposeRule(c, oc, newSvc, currentNs)
+				} else {
+					// delete
+					deleteExposeRule(newSvc.Namespace, newSvc.ObjectMeta.Name, c, oc, currentNs)
+				}
+			}
+		}
 	}
 }
 
@@ -149,11 +191,28 @@ func addExposeRule(c *kclient.Client, oc *osclient.Client, svc *api.Service, cur
 
 func deleteExposeRule(ns string, name string, c *kclient.Client, oc *osclient.Client, currentNs string) error {
 
-	if util.TypeOfMaster(c) == util.Kubernetes {
-		return deleteIngress(ns, name, c)
-	} else if util.TypeOfMaster(c) == util.OpenShift {
-		return deleteRoute(ns, name, oc)
+	environment, err := c.ConfigMaps(currentNs).Get(exposeControllerCM)
+	if err != nil {
+		log.Fatalf("No ConfigMap with name %s found in namespace %s.  Was the exposecontroller namespace setup by gofabric8? %v", exposeControllerCM, currentNs, err)
 	}
+
+	switch environment.Data[exposeRule] {
+	case ingress:
+		return deleteIngress(ns, name, c)
+
+	case route:
+		return deleteRoute(ns, name, oc)
+
+	case nodePort:
+		return nil
+
+	case loadBalancer:
+		return nil
+
+	default:
+		log.Fatalf("No match for %s expose-rule found.  Was the exposecontroller namespace setup by gofabric8?", environment.Data[exposeRule])
+	}
+
 	return nil
 }
 
@@ -198,8 +257,9 @@ func useNodePort(ns string, svc *api.Service, c *kclient.Client) error {
 			return err
 		}
 		util.Successf("Exposed service %s using NodePort", svc.ObjectMeta.Name)
+	} else {
+		log.Printf("Skipping service %s", svc.ObjectMeta.Name)
 	}
-	log.Printf("Skipping service %s", svc.ObjectMeta.Name)
 	return nil
 }
 
@@ -214,8 +274,10 @@ func useLoadBalancer(ns string, svc *api.Service, c *kclient.Client) error {
 			return err
 		}
 		util.Successf("Exposed service %s using LoadBalancer. This can take a few minutes to be create by cloud provider", svc.ObjectMeta.Name)
+	} else {
+		log.Printf("Skipping service %s", svc.ObjectMeta.Name)
 	}
-	log.Printf("Skipping service %s", svc.ObjectMeta.Name)
+
 	return nil
 }
 
