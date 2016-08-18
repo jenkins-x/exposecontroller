@@ -45,8 +45,8 @@ const (
 	loadBalancer       = "load-balancer"
 	nodePort           = "node-port"
 	route              = "route"
-	resyncPeriod       = time.Millisecond * 5000 // lets check every 5 seconds
 	exposeLabel        = "expose=true"
+	watchRate          = "watch-rate-milliseconds"
 )
 
 func main() {
@@ -57,6 +57,10 @@ func main() {
 	currentNs, _, _ := f.DefaultNamespace()
 
 	util.Successf("Connected")
+
+	resyncPeriod := getResyncPeriod(c, currentNs)
+	log.Printf("ResyncPeriod is %v", resyncPeriod)
+
 	_, controller := framework.NewInformer(
 		&cache.ListWatch{
 			ListFunc: func(options api.ListOptions) (runtime.Object, error) {
@@ -81,6 +85,23 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
+func getResyncPeriod(c *kclient.Client, currentNs string) time.Duration {
+	environment, err := c.ConfigMaps(currentNs).Get(exposeControllerCM)
+	if err != nil {
+		log.Fatalf("No ConfigMap with name %s found in namespace %s.  Was the exposecontroller namespace setup by gofabric8? %v", exposeControllerCM, currentNs, err)
+	}
+
+	period, ok := environment.Data[watchRate]
+	if ok {
+		milliseconds, err := time.ParseDuration(period + "ms")
+		if err != nil {
+			log.Printf("Error parsing %v : %v", period, err)
+		}
+		return milliseconds
+	}
+	return time.Millisecond * 5000 // default of 5 seconds
+}
+
 func serviceAdded(c *kclient.Client, oc *osclient.Client, currentNs string) func(obj interface{}) {
 	return func(obj interface{}) {
 		svc := obj.(*api.Service)
@@ -90,7 +111,6 @@ func serviceAdded(c *kclient.Client, oc *osclient.Client, currentNs string) func
 
 func serviceUpdated(c *kclient.Client, oc *osclient.Client, currentNs string) func(oldObj interface{}, newObj interface{}) {
 	return func(oldObj interface{}, newObj interface{}) {
-
 		exposeLabelKey, exposeLabelValue := getExposeLabel()
 		oldSvc := oldObj.(*api.Service)
 		oldServiceLabels := oldSvc.ObjectMeta.Labels
