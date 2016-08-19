@@ -2,9 +2,9 @@
 
 Automatically expose services creating ingress rules, openshift routes or modifying services to use kubernetes nodePort or loadBalancer service types
 
-___NOTE___ if you have used [gofabric8](https://github.com/fabric8io/gofabric8) you can skip this and go straight to [Run](#run)
-
 ## Setup
+
+___NOTE___ if you have used [gofabric8](https://github.com/fabric8io/gofabric8) you can skip this and go straight to [Run](#run)
 
 As we create resources via the Kubernetes API server we'll need to create a Service Account.
 
@@ -153,12 +153,6 @@ After setting some test env vars you'll need to build the binary and run it.  Yo
  * run in kubernetes
 
      `kubectl run exposecontroller --image fabric8/exposecontroller:test `
-
-## Releasing
-
-Just run `make release`. This will cross-compile for all supported platforms, create tag & upload tarballs (zip file for Windows) to Github releases for download.
-
-Updating the version is done via `make bump` to bump minor version & `make bump-patch` to bump patch version. This is necessary as tags are created from the version specified when releasing.
 
 # Future
 
