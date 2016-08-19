@@ -2,10 +2,46 @@
 
 Automatically expose services creating ingress rules, openshift routes or modifying services to use kubernetes nodePort or loadBalancer service types
 
+___NOTE___ if you have used [gofabric8](https://github.com/fabric8io/gofabric8) you can skip this and go straight to [Run](#run)
+
+## Setup
+
+As we create resources via the Kubernetes API server we'll need to create a Service Account.
+
+### Kubernetes 
+
+```
+cat <<EOF | kubectl create -f -
+apiVersion: "v1"
+kind: "ServiceAccount"
+metadata:
+  labels:
+    provider: "fabric8"
+    project: "exposecontroller"
+  name: "exposecontroller"
+EOF
+```
+
+### OpenShift
+
+```
+cat <<EOF | oc create -f -
+apiVersion: "v1"
+kind: "ServiceAccount"
+metadata:
+  labels:
+    provider: "fabric8"
+    project: "exposecontroller"
+  name: "exposecontroller"
+EOF
+``` 
+
+You will also need to grant the correct roles
+
+    oc adm policy add-cluster-role-to-user cluster-admin system:serviceaccount:default:exposecontroller
+    oc adm policy add-cluster-role-to-group cluster-reader system:serviceaccounts # probably too open for all setups
 
 ## Configure
-
-___NOTE___ if you have used [gofabric8](https://github.com/fabric8io/gofabric8) you can skip this and go straight to [Run](#run)
 
 If you're not using [gofabric8](https://github.com/fabric8io/gofabric8) to setup your environment then you'll need to create a `configmap` in oder to specify the approach `exposecontroller` will use to configure accessing your services.
 
@@ -21,12 +57,29 @@ You also need to specify an `expose-rule` type that you want the __exposecontrol
 
 ### example
 
+### Kubernetes
 ```
 cat <<EOF | kubectl create -f -
 apiVersion: "v1"
 data:
   expose-rule: "ingress"
-  domain: replace.me.io
+  domain: "replace.me.io"
+  watch-rate-milliseconds: "5000"
+kind: "ConfigMap"
+metadata:
+  name: "exposecontroller"
+EOF
+```
+
+### OpenShift
+
+```
+cat <<EOF | oc create -f -
+apiVersion: "v1"
+data:
+  expose-rule: "route"
+  domain: "replace.me.io"
+  watch-rate-milliseconds: "5000"
 kind: "ConfigMap"
 metadata:
   name: "exposecontroller"
@@ -36,12 +89,14 @@ EOF
 ## Run
 
 ### Kubernetes
+
 ```
-kubectl run exposecontroller --image=fabric8/exposecontroller
+kc create -f http://central.maven.org/maven2/io/fabric8/devops/apps/exposecontroller/2.2.236/exposecontroller-2.2.236-kubernetes.yml
 ```
+
 ### OpenShift
 ```
-oc run exposecontroller --image=fabric8/exposecontroller
+oc create -f http://central.maven.org/maven2/io/fabric8/devops/apps/exposecontroller/2.2.236/exposecontroller-2.2.236-openshift.yml
 ```
 
 ## Label
