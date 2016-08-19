@@ -88,6 +88,8 @@ EOF
 
 ## Run
 
+We're adding install via Helm however until then...
+
 ### Kubernetes
 
 ```
