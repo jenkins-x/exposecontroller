@@ -199,7 +199,13 @@ func addExposeRule(c *kclient.Client, oc *osclient.Client, svc *api.Service, cur
 			createRoute(svc.Namespace, d, svc, c, oc)
 		}
 	case nodePort:
-		useNodePort(svc.Namespace, svc, c)
+		// NodePort doesnt seem to work on openshift
+		if util.TypeOfMaster(c) == util.OpenShift {
+			util.Warn("Switching to use LoadBalancer type as NodePort not working on MiniShift")
+			useLoadBalancer(svc.Namespace, svc, c)
+		} else {
+			useNodePort(svc.Namespace, svc, c)
+		}
 
 	case loadBalancer:
 		useLoadBalancer(svc.Namespace, svc, c)
