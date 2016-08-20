@@ -6,37 +6,7 @@ Automatically expose services creating ingress rules, openshift routes or modify
 
 ___NOTE___ if you have used [gofabric8](https://github.com/fabric8io/gofabric8) you can skip this and go straight to [Run](#run)
 
-As we create resources via the Kubernetes API server we'll need to create a Service Account.
-
-### Kubernetes 
-
-```
-cat <<EOF | kubectl create -f -
-apiVersion: "v1"
-kind: "ServiceAccount"
-metadata:
-  labels:
-    provider: "fabric8"
-    project: "exposecontroller"
-  name: "exposecontroller"
-EOF
-```
-
-### OpenShift
-
-```
-cat <<EOF | oc create -f -
-apiVersion: "v1"
-kind: "ServiceAccount"
-metadata:
-  labels:
-    provider: "fabric8"
-    project: "exposecontroller"
-  name: "exposecontroller"
-EOF
-``` 
-
-You will also need to grant the correct roles
+If you're using OpenShift then you'll need to add a couple roles:
 
     oc adm policy add-cluster-role-to-user cluster-admin system:serviceaccount:default:exposecontroller
     oc adm policy add-cluster-role-to-group cluster-reader system:serviceaccounts # probably too open for all setups
