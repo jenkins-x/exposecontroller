@@ -63,12 +63,12 @@ We're adding install via Helm however until then...
 ### Kubernetes
 
 ```
-kc create -f http://central.maven.org/maven2/io/fabric8/devops/apps/exposecontroller/2.2.236/exposecontroller-2.2.236-kubernetes.yml
+kc create -f http://central.maven.org/maven2/io/fabric8/devops/apps/exposecontroller/2.2.240/exposecontroller-2.2.240-kubernetes.yml
 ```
 
 ### OpenShift
 ```
-oc create -f http://central.maven.org/maven2/io/fabric8/devops/apps/exposecontroller/2.2.236/exposecontroller-2.2.236-openshift.yml
+oc create -f http://central.maven.org/maven2/io/fabric8/devops/apps/exposecontroller/2.2.240/exposecontroller-2.2.240-openshift.yml
 ```
 
 ## Label
