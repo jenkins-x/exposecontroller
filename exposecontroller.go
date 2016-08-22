@@ -18,6 +18,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -54,9 +55,18 @@ func main() {
 	f := cmdutil.NewFactory(nil)
 	c, cfg := client.NewClient(f)
 	oc, _ := client.NewOpenShiftClient(cfg)
-	currentNs, _, _ := f.DefaultNamespace()
 
 	util.Successf("Connected")
+
+	var err error
+	currentNs := os.Getenv("KUBERNETES_NAMESPACE")
+
+	if currentNs == "" {
+		currentNs, _, err = f.DefaultNamespace()
+		if err != nil {
+			util.Error("No $KUBERNETES_NAMESPACE environment variable set")
+		}
+	}
 
 	resyncPeriod := getResyncPeriod(c, currentNs)
 	log.Printf("ResyncPeriod is %v", resyncPeriod)
