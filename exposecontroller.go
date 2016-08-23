@@ -418,7 +418,7 @@ func createRoute(ns string, domain string, svc *api.Service, c *kclient.Client, 
 			routes := oc.Routes(ns)
 			_, err := routes.Get(name)
 			if err != nil {
-				hostName := name + "." + domain
+				hostName := name + "." + ns + "." + domain
 				route := rapi.Route{
 					ObjectMeta: kapi.ObjectMeta{
 						Labels: labels,
