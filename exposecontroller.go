@@ -418,7 +418,10 @@ func createRoute(ns string, domain string, svc *api.Service, c *kclient.Client, 
 			routes := oc.Routes(ns)
 			_, err := routes.Get(name)
 			if err != nil {
-				hostName := name + "." + ns + "." + domain
+				// need to add namespace back in the hostname but we have to update the fabric8-console oauthclient too
+				// see https://github.com/fabric8io/gofabric8/issues/98
+				//hostName := name + "." + ns + "." + domain
+				hostName := name + "." + domain
 				route := rapi.Route{
 					ObjectMeta: kapi.ObjectMeta{
 						Labels: labels,
