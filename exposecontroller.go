@@ -19,6 +19,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,15 +40,16 @@ import (
 )
 
 const (
-	domain             = "domain"
-	exposeRule         = "expose-rule"
-	exposeControllerCM = "exposecontroller"
-	ingress            = "ingress"
-	loadBalancer       = "load-balancer"
-	nodePort           = "node-port"
-	route              = "route"
-	exposeLabel        = "expose=true"
-	watchRate          = "watch-rate-milliseconds"
+	domain              = "domain"
+	exposeAnnotationKey = "fabric8.io/exposeUrl"
+	exposeRule          = "expose-rule"
+	exposeControllerCM  = "exposecontroller"
+	ingress             = "ingress"
+	loadBalancer        = "load-balancer"
+	nodePort            = "node-port"
+	route               = "route"
+	exposeLabel         = "expose=true"
+	watchRate           = "watch-rate-milliseconds"
 )
 
 func main() {
@@ -286,6 +288,18 @@ func useNodePort(ns string, svc *api.Service, c *kclient.Client) error {
 			log.Printf("Unable to update service %s with NodePort %v", svc.ObjectMeta.Name, err)
 			return err
 		}
+
+		if len(svc.Spec.Ports) > 1 {
+			util.Warnf("Found %v ports %s", len(svc.Spec.Ports), svc.Name)
+
+		}
+
+		for _, port := range svc.Spec.Ports {
+			nodePort := strconv.Itoa(port.NodePort)
+			hostName := ":" + nodePort
+			addServiceAnnotation(c, ns, svc, hostName)
+		}
+
 		util.Successf("Exposed service %s using NodePort", svc.ObjectMeta.Name)
 	} else {
 		log.Printf("Skipping service %s", svc.ObjectMeta.Name)
@@ -302,6 +316,10 @@ func useLoadBalancer(ns string, svc *api.Service, c *kclient.Client) error {
 		if err != nil {
 			log.Printf("Unable to update service %s with LoadBalancer %v", svc.ObjectMeta.Name, err)
 			return err
+		}
+		hostName := svc.Spec.LoadBalancerIP
+		if hostName != "" {
+			addServiceAnnotation(c, ns, svc, hostName)
 		}
 		util.Successf("Exposed service %s using LoadBalancer. This can take a few minutes to be create by cloud provider", svc.ObjectMeta.Name)
 	} else {
@@ -392,6 +410,7 @@ func createIngress(ns string, domain string, service *api.Service, c *kclient.Cl
 					log.Printf("Failed to create the ingress %s with error %v", name, err)
 					return err
 				}
+				addServiceAnnotation(c, ns, service, hostName)
 				util.Successf("Exposed service %s using ingress rule", name)
 			}
 		}
@@ -399,6 +418,15 @@ func createIngress(ns string, domain string, service *api.Service, c *kclient.Cl
 		log.Printf("Skipping service %s", name)
 	}
 	return nil
+}
+
+func addServiceAnnotation(c *kclient.Client, ns string, svc *api.Service, hostName string) {
+
+	svc.Annotations[exposeAnnotationKey] = hostName
+	_, err := c.Services(ns).Update(svc)
+	if err != nil {
+		util.Errorf("Failed to add the %s to service %s %v", exposeAnnotationKey, svc.Name, err)
+	}
 }
 
 func createRoute(ns string, domain string, svc *api.Service, c *kclient.Client, oc *osclient.Client) error {
@@ -438,6 +466,7 @@ func createRoute(ns string, domain string, svc *api.Service, c *kclient.Client, 
 					log.Printf("Failed to create the route %s with error %v", name, err)
 					return err
 				}
+				addServiceAnnotation(c, ns, svc, hostName)
 				util.Successf("Exposed service %s using openshift route", name)
 			}
 		}
