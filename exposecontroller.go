@@ -359,7 +359,7 @@ func createIngress(ns string, domain string, service *api.Service, c *kclient.Cl
 	name := service.ObjectMeta.Name
 	serviceSpec := service.Spec
 	serviceLabels := service.ObjectMeta.Labels
-
+	hostName := name + "." + ns + "." + domain
 	found := false
 
 	exposeLabelKey, exposeLabelValue := getExposeLabel()
@@ -377,7 +377,6 @@ func createIngress(ns string, domain string, service *api.Service, c *kclient.Cl
 						ruleService := path.Backend.ServiceName
 						if ruleService == name {
 							found = true
-							break
 						}
 					}
 				}
@@ -385,7 +384,7 @@ func createIngress(ns string, domain string, service *api.Service, c *kclient.Cl
 		}
 		if !found {
 			ports := serviceSpec.Ports
-			hostName := name + "." + ns + "." + domain
+
 			if len(ports) > 0 {
 				rules := []extensions.IngressRule{}
 				for _, port := range ports {
@@ -423,10 +422,10 @@ func createIngress(ns string, domain string, service *api.Service, c *kclient.Cl
 					log.Printf("Failed to create the ingress %s with error %v", name, err)
 					return err
 				}
-				addServiceAnnotation(c, ns, service, hostName)
 				util.Successf("Exposed service %s using ingress rule", name)
 			}
 		}
+		addServiceAnnotation(c, ns, service, hostName)
 	} else {
 		log.Printf("Skipping service %s", name)
 	}
@@ -466,6 +465,10 @@ func createRoute(ns string, domain string, svc *api.Service, c *kclient.Client, 
 	rapiv1.AddToScheme(kapi.Scheme)
 
 	name := svc.ObjectMeta.Name
+	// need to add namespace back in the hostname but we have to update the fabric8-console oauthclient too
+	// see https://github.com/fabric8io/gofabric8/issues/98
+	//hostName := name + "." + ns + "." + domain
+	hostName := name + "." + domain
 
 	var labels = make(map[string]string)
 	labels["provider"] = "fabric8"
@@ -477,10 +480,6 @@ func createRoute(ns string, domain string, svc *api.Service, c *kclient.Client, 
 			routes := oc.Routes(ns)
 			_, err := routes.Get(name)
 			if err != nil {
-				// need to add namespace back in the hostname but we have to update the fabric8-console oauthclient too
-				// see https://github.com/fabric8io/gofabric8/issues/98
-				//hostName := name + "." + ns + "." + domain
-				hostName := name + "." + domain
 				route := rapi.Route{
 					ObjectMeta: kapi.ObjectMeta{
 						Labels: labels,
@@ -497,10 +496,10 @@ func createRoute(ns string, domain string, svc *api.Service, c *kclient.Client, 
 					log.Printf("Failed to create the route %s with error %v", name, err)
 					return err
 				}
-				addServiceAnnotation(c, ns, svc, hostName)
 				util.Successf("Exposed service %s using openshift route", name)
 			}
 		}
+		addServiceAnnotation(c, ns, svc, hostName)
 	} else {
 		log.Printf("Skipping service %s", name)
 	}
