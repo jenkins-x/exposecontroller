@@ -50,6 +50,7 @@ const (
 	route               = "route"
 	exposeLabel         = "expose=true"
 	watchRate           = "watch-rate-milliseconds"
+	externalIPLabel     = "kubernetes.io/externalIP"
 )
 
 func main() {
@@ -294,9 +295,21 @@ func useNodePort(ns string, svc *api.Service, c *kclient.Client) error {
 
 		}
 
+		nodes, err := c.Nodes().List(api.ListOptions{})
+		if len(nodes.Items) > 1 {
+			util.Errorf("Using NodePorts on clusters of more than one node is not yet supported; unable to annotate service %s", svc.Name)
+		}
+		var ip string
+		for _, node := range nodes.Items {
+			ip = node.ObjectMeta.Annotations[externalIPLabel]
+		}
+		if ip == "" {
+			util.Errorf("Unable to find %s label, was gofabric8 used to deploy?", externalIPLabel)
+			return nil
+		}
 		for _, port := range svc.Spec.Ports {
 			nodePort := strconv.Itoa(port.NodePort)
-			hostName := ":" + nodePort
+			hostName := ip + ":" + nodePort
 			addServiceAnnotation(c, ns, svc, hostName)
 		}
 
