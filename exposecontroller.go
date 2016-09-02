@@ -310,7 +310,7 @@ func useNodePort(ns string, svc *api.Service, c *kclient.Client) error {
 		for _, port := range svc.Spec.Ports {
 			nodePort := strconv.Itoa(port.NodePort)
 			hostName := ip + ":" + nodePort
-			addServiceAnnotation(c, ns, svc, hostName, port.Name)
+			addServiceAnnotation(c, ns, svc, hostName)
 		}
 
 		util.Successf("Exposed service %s using NodePort", svc.ObjectMeta.Name)
@@ -332,7 +332,7 @@ func useLoadBalancer(ns string, svc *api.Service, c *kclient.Client) error {
 		}
 		hostName := svc.Spec.LoadBalancerIP
 		if hostName != "" {
-			addServiceAnnotation(c, ns, svc, hostName, "")
+			addServiceAnnotation(c, ns, svc, hostName)
 		}
 		util.Successf("Exposed service %s using LoadBalancer. This can take a few minutes to be create by cloud provider", svc.ObjectMeta.Name)
 	} else {
@@ -423,7 +423,7 @@ func createIngress(ns string, domain string, service *api.Service, c *kclient.Cl
 					log.Printf("Failed to create the ingress %s with error %v", name, err)
 					return err
 				}
-				addServiceAnnotation(c, ns, service, hostName, "")
+				addServiceAnnotation(c, ns, service, hostName)
 				util.Successf("Exposed service %s using ingress rule", name)
 			}
 		}
@@ -433,15 +433,24 @@ func createIngress(ns string, domain string, service *api.Service, c *kclient.Cl
 	return nil
 }
 
-func addServiceAnnotation(c *kclient.Client, ns string, svc *api.Service, hostName string, portName string) {
+func addServiceAnnotation(c *kclient.Client, ns string, svc *api.Service, hostName string) {
 
+	// default to http
 	protocol := "http"
-	port := strings.Split(hostName, ":")[1]
 
-	if port == "443" || port == "8443" {
-		protocol = "https"
-	} else if portName == "https" {
-		protocol = portName
+	// if a port is on the hostname check is its a default http / https port
+	ports := strings.Split(hostName, ":")
+	if len(ports) == 2 {
+		if ports[1] == "443" || ports[1] == "8443" {
+			protocol = "https"
+		} else {
+			// check if the service port has a name of https
+			for _, port := range svc.Spec.Ports {
+				if port.Name == "https" {
+					protocol = port.Name
+				}
+			}
+		}
 	}
 
 	svc.Annotations[exposeAnnotationKey] = protocol + "://" + hostName
@@ -488,7 +497,7 @@ func createRoute(ns string, domain string, svc *api.Service, c *kclient.Client, 
 					log.Printf("Failed to create the route %s with error %v", name, err)
 					return err
 				}
-				addServiceAnnotation(c, ns, svc, hostName, "")
+				addServiceAnnotation(c, ns, svc, hostName)
 				util.Successf("Exposed service %s using openshift route", name)
 			}
 		}
