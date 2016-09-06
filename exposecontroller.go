@@ -122,6 +122,8 @@ func serviceAdded(c *kclient.Client, oc *osclient.Client, currentNs string) func
 	}
 }
 
+// if expose=true label has been removed or set to false delete rules
+// otherwise if not rule exists or the rule has changed create it
 func serviceUpdated(c *kclient.Client, oc *osclient.Client, currentNs string) func(oldObj interface{}, newObj interface{}) {
 	return func(oldObj interface{}, newObj interface{}) {
 		exposeLabelKey, exposeLabelValue := getExposeLabel()
@@ -131,33 +133,18 @@ func serviceUpdated(c *kclient.Client, oc *osclient.Client, currentNs string) fu
 		newSvc := newObj.(*api.Service)
 		newServiceLabels := newSvc.ObjectMeta.Labels
 
-		if oldValue, oldFound := oldServiceLabels[exposeLabelKey]; oldFound {
-			if newValue, newFound := newServiceLabels[exposeLabelKey]; !newFound {
+		//if expose=true label has been removed or changed and set to false then delete rules
+		if _, oldFound := oldServiceLabels[exposeLabelKey]; oldFound {
+			if newValue, newFound := newServiceLabels[exposeLabelKey]; !newFound || newValue == "false" {
 				// delete
 				deleteExposeRule(newSvc.Namespace, newSvc.ObjectMeta.Name, c, oc, currentNs)
-			} else {
-				// if the expose label has changed
-				if oldValue != newValue {
-					if newValue == exposeLabelValue {
-						// add
-						addExposeRule(c, oc, newSvc, currentNs)
-					} else {
-						// delete
-						deleteExposeRule(newSvc.Namespace, newSvc.ObjectMeta.Name, c, oc, currentNs)
-					}
-				}
+				return
 			}
-		} else if newValue, newFound := newServiceLabels[exposeLabelKey]; newFound {
-			// if the expose label has changed
-			if oldValue != newValue {
-				if newValue == exposeLabelValue {
-					// add
-					addExposeRule(c, oc, newSvc, currentNs)
-				} else {
-					// delete
-					deleteExposeRule(newSvc.Namespace, newSvc.ObjectMeta.Name, c, oc, currentNs)
-				}
-			}
+		}
+
+		newValue, _ := newServiceLabels[exposeLabelKey]
+		if newValue == exposeLabelValue {
+			addExposeRule(c, oc, newSvc, currentNs)
 		}
 	}
 }
@@ -182,7 +169,6 @@ func serviceDeleted(c *kclient.Client, oc *osclient.Client, currentNs string) fu
 }
 
 func addExposeRule(c *kclient.Client, oc *osclient.Client, svc *api.Service, currentNs string) {
-	log.Printf("Found service %s in namespace %s", svc.ObjectMeta.Name, svc.Namespace)
 
 	environment, err := c.ConfigMaps(currentNs).Get(exposeControllerCM)
 	if err != nil {
@@ -282,23 +268,25 @@ func deleteRoute(ns string, name string, c *osclient.Client) error {
 func useNodePort(ns string, svc *api.Service, c *kclient.Client) error {
 	serviceLabels := svc.ObjectMeta.Labels
 	exposeLabelKey, exposeLabelValue := getExposeLabel()
+	updated := false
 	if serviceLabels[exposeLabelKey] == exposeLabelValue {
-		svc.Spec.Type = api.ServiceTypeNodePort
-		svc, err := c.Services(ns).Update(svc)
-		if err != nil {
-			log.Printf("Unable to update service %s with NodePort %v", svc.ObjectMeta.Name, err)
-			return err
+		if svc.Spec.Type != api.ServiceTypeNodePort {
+			svc.Spec.Type = api.ServiceTypeNodePort
+			updated = true
 		}
 
 		if len(svc.Spec.Ports) > 1 {
 			util.Warnf("Found %v ports %s", len(svc.Spec.Ports), svc.Name)
-
 		}
 
 		nodes, err := c.Nodes().List(api.ListOptions{})
+		if err != nil {
+			util.Errorf("Error getting nodes %v", err)
+		}
 		if len(nodes.Items) > 1 {
 			util.Errorf("Using NodePorts on clusters of more than one node is not yet supported; unable to annotate service %s", svc.Name)
 		}
+
 		var ip string
 		for _, node := range nodes.Items {
 			ip = node.ObjectMeta.Annotations[externalIPLabel]
@@ -310,10 +298,9 @@ func useNodePort(ns string, svc *api.Service, c *kclient.Client) error {
 		for _, port := range svc.Spec.Ports {
 			nodePort := strconv.Itoa(port.NodePort)
 			hostName := ip + ":" + nodePort
-			addServiceAnnotation(c, ns, svc, hostName)
+			util.Successf("Updating service %s using NodePort", svc.ObjectMeta.Name)
+			addServiceAnnotation(c, ns, svc, hostName, updated)
 		}
-
-		util.Successf("Exposed service %s using NodePort", svc.ObjectMeta.Name)
 	} else {
 		log.Printf("Skipping service %s", svc.ObjectMeta.Name)
 	}
@@ -323,18 +310,17 @@ func useNodePort(ns string, svc *api.Service, c *kclient.Client) error {
 func useLoadBalancer(ns string, svc *api.Service, c *kclient.Client) error {
 	serviceLabels := svc.ObjectMeta.Labels
 	exposeLabelKey, exposeLabelValue := getExposeLabel()
+	updated := false
 	if serviceLabels[exposeLabelKey] == exposeLabelValue {
-		svc.Spec.Type = api.ServiceTypeLoadBalancer
-		svc, err := c.Services(ns).Update(svc)
-		if err != nil {
-			log.Printf("Unable to update service %s with LoadBalancer %v", svc.ObjectMeta.Name, err)
-			return err
+		if svc.Spec.Type != api.ServiceTypeLoadBalancer {
+			svc.Spec.Type = api.ServiceTypeLoadBalancer
+			util.Successf("Updating service %s using LoadBalancer. This can take a few minutes to be create by cloud provider", svc.ObjectMeta.Name)
+			updated = true
 		}
 		hostName := svc.Spec.LoadBalancerIP
 		if hostName != "" {
-			addServiceAnnotation(c, ns, svc, hostName)
+			addServiceAnnotation(c, ns, svc, hostName, updated)
 		}
-		util.Successf("Exposed service %s using LoadBalancer. This can take a few minutes to be create by cloud provider", svc.ObjectMeta.Name)
 	} else {
 		log.Printf("Skipping service %s", svc.ObjectMeta.Name)
 	}
@@ -347,11 +333,6 @@ func createIngress(ns string, domain string, service *api.Service, c *kclient.Cl
 	rapiv1.AddToScheme(kapi.Scheme)
 
 	ingressClient := c.Extensions().Ingress(ns)
-	ingresses, err := ingressClient.List(kapi.ListOptions{})
-	if err != nil {
-		log.Printf("Failed to load ingresses in namespace %s with error %v", ns, err)
-		return err
-	}
 
 	var labels = make(map[string]string)
 	labels["provider"] = "fabric8"
@@ -360,29 +341,12 @@ func createIngress(ns string, domain string, service *api.Service, c *kclient.Cl
 	serviceSpec := service.Spec
 	serviceLabels := service.ObjectMeta.Labels
 	hostName := name + "." + ns + "." + domain
-	found := false
-
 	exposeLabelKey, exposeLabelValue := getExposeLabel()
+
 	if serviceLabels[exposeLabelKey] == exposeLabelValue {
-		for _, ingress := range ingresses.Items {
-			if ingress.GetName() == name {
-				found = true
-				break
-			}
-			// TODO look for other ingresses with different names?
-			for _, rule := range ingress.Spec.Rules {
-				http := rule.HTTP
-				if http != nil {
-					for _, path := range http.Paths {
-						ruleService := path.Backend.ServiceName
-						if ruleService == name {
-							found = true
-						}
-					}
-				}
-			}
-		}
-		if !found {
+		ingress, err := ingressClient.Get(name)
+
+		if err != nil {
 			ports := serviceSpec.Ports
 
 			if len(ports) > 0 {
@@ -424,15 +388,20 @@ func createIngress(ns string, domain string, service *api.Service, c *kclient.Cl
 				}
 				util.Successf("Exposed service %s using ingress rule", name)
 			}
+		} else if len(ingress.Spec.Rules) > 0 && ingress.Spec.Rules[0].Host != hostName {
+			ingress.Spec.Rules[0].Host = hostName
+			ingressClient.Update(ingress)
+			util.Successf("Updated ingress %s with hostname %s", ingress.Name, hostName)
+
 		}
-		addServiceAnnotation(c, ns, service, hostName)
+		addServiceAnnotation(c, ns, service, hostName, false)
 	} else {
 		log.Printf("Skipping service %s", name)
 	}
 	return nil
 }
 
-func addServiceAnnotation(c *kclient.Client, ns string, svc *api.Service, hostName string) {
+func addServiceAnnotation(c *kclient.Client, ns string, svc *api.Service, hostName string, hasServiceChanged bool) {
 
 	// default to http
 	protocol := "http"
@@ -451,11 +420,16 @@ func addServiceAnnotation(c *kclient.Client, ns string, svc *api.Service, hostNa
 			}
 		}
 	}
-
-	svc.Annotations[exposeAnnotationKey] = protocol + "://" + hostName
-	_, err := c.Services(ns).Update(svc)
-	if err != nil {
-		util.Errorf("Failed to add the %s to service %s %v", exposeAnnotationKey, svc.Name, err)
+	newExposeURL := protocol + "://" + hostName
+	existingExposeURL := svc.Annotations[exposeAnnotationKey]
+	if existingExposeURL != newExposeURL || hasServiceChanged {
+		util.Infof("ExistingExposeURL %s, newExposeURL %s, hasServiceChanged %v", existingExposeURL, newExposeURL, hasServiceChanged)
+		svc.Annotations[exposeAnnotationKey] = newExposeURL
+		_, err := c.Services(ns).Update(svc)
+		if err != nil {
+			util.Warnf("Failed to add the %s to service %s %v", exposeAnnotationKey, svc.Name, err)
+		}
+		util.Successf("Added %s %s annotation to service %s", newExposeURL, exposeAnnotationKey, svc.Name)
 	}
 }
 
@@ -478,7 +452,7 @@ func createRoute(ns string, domain string, svc *api.Service, c *kclient.Client, 
 	if serviceLabels[exposeLabelKey] == exposeLabelValue {
 		if name != "kubernetes" {
 			routes := oc.Routes(ns)
-			_, err := routes.Get(name)
+			route, err := routes.Get(name)
 			if err != nil {
 				route := rapi.Route{
 					ObjectMeta: kapi.ObjectMeta{
@@ -497,9 +471,13 @@ func createRoute(ns string, domain string, svc *api.Service, c *kclient.Client, 
 					return err
 				}
 				util.Successf("Exposed service %s using openshift route", name)
+			} else if route.Spec.Host != hostName {
+				route.Spec.Host = hostName
+				routes.Update(route)
+				util.Successf("Updated route % with hsotname %s", route.Name, hostName)
 			}
 		}
-		addServiceAnnotation(c, ns, svc, hostName)
+		addServiceAnnotation(c, ns, svc, hostName, false)
 	} else {
 		log.Printf("Skipping service %s", name)
 	}
