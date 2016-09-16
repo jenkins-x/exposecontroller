@@ -1,8 +1,6 @@
 package storage
 
 import (
-	"regexp"
-
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/context"
 	"github.com/docker/distribution/reference"
@@ -20,15 +18,9 @@ type registry struct {
 	blobDescriptorCacheProvider  cache.BlobDescriptorCacheProvider
 	deleteEnabled                bool
 	resumableDigestEnabled       bool
+	schema1SignaturesEnabled     bool
 	schema1SigningKey            libtrust.PrivateKey
 	blobDescriptorServiceFactory distribution.BlobDescriptorServiceFactory
-	manifestURLs                 manifestURLs
-}
-
-// manifestURLs holds regular expressions for controlling manifest URL whitelisting
-type manifestURLs struct {
-	allow *regexp.Regexp
-	deny  *regexp.Regexp
 }
 
 // RegistryOption is the type used for functional options for NewRegistry.
@@ -55,24 +47,17 @@ func DisableDigestResumption(registry *registry) error {
 	return nil
 }
 
-// ManifestURLsAllowRegexp is a functional option for NewRegistry.
-func ManifestURLsAllowRegexp(r *regexp.Regexp) RegistryOption {
-	return func(registry *registry) error {
-		registry.manifestURLs.allow = r
-		return nil
-	}
-}
-
-// ManifestURLsDenyRegexp is a functional option for NewRegistry.
-func ManifestURLsDenyRegexp(r *regexp.Regexp) RegistryOption {
-	return func(registry *registry) error {
-		registry.manifestURLs.deny = r
-		return nil
-	}
+// DisableSchema1Signatures is a functional option for NewRegistry. It disables
+// signature storage and ensures all schema1 manifests will only be returned
+// with a signature from a provided signing key.
+func DisableSchema1Signatures(registry *registry) error {
+	registry.schema1SignaturesEnabled = false
+	return nil
 }
 
 // Schema1SigningKey returns a functional option for NewRegistry. It sets the
-// key for signing  all schema1 manifests.
+// signing key for adding a signature to all schema1 manifests. This should be
+// used in conjunction with disabling signature store.
 func Schema1SigningKey(key libtrust.PrivateKey) RegistryOption {
 	return func(registry *registry) error {
 		registry.schema1SigningKey = key
@@ -131,8 +116,9 @@ func NewRegistry(ctx context.Context, driver storagedriver.StorageDriver, option
 			statter: statter,
 			pathFn:  bs.path,
 		},
-		statter:                statter,
-		resumableDigestEnabled: true,
+		statter:                  statter,
+		resumableDigestEnabled:   true,
+		schema1SignaturesEnabled: true,
 	}
 
 	for _, option := range options {
@@ -242,16 +228,19 @@ func (repo *repository) Manifests(ctx context.Context, options ...distribution.M
 		repository: repo,
 		blobStore:  blobStore,
 		schema1Handler: &signedManifestHandler{
-			ctx:               ctx,
-			schema1SigningKey: repo.schema1SigningKey,
-			repository:        repo,
-			blobStore:         blobStore,
+			ctx:        ctx,
+			repository: repo,
+			blobStore:  blobStore,
+			signatures: &signatureStore{
+				ctx:        ctx,
+				repository: repo,
+				blobStore:  repo.blobStore,
+			},
 		},
 		schema2Handler: &schema2ManifestHandler{
-			ctx:          ctx,
-			repository:   repo,
-			blobStore:    blobStore,
-			manifestURLs: repo.registry.manifestURLs,
+			ctx:        ctx,
+			repository: repo,
+			blobStore:  blobStore,
 		},
 		manifestListHandler: &manifestListHandler{
 			ctx:        ctx,

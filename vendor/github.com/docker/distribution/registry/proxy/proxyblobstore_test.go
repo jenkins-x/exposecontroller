@@ -370,20 +370,15 @@ func testProxyStoreServe(t *testing.T, te *testEnv, numClients int) {
 	wg.Wait()
 
 	remoteBlobCount := len(te.inRemote)
-	sbsMu.Lock()
 	if (*localStats)["stat"] != remoteBlobCount*numClients && (*localStats)["create"] != te.numUnique {
-		sbsMu.Unlock()
 		t.Fatal("Expected: stat:", remoteBlobCount*numClients, "create:", remoteBlobCount)
 	}
-	sbsMu.Unlock()
 
 	// Wait for any async storage goroutines to finish
 	time.Sleep(3 * time.Second)
 
-	sbsMu.Lock()
 	remoteStatCount := (*remoteStats)["stat"]
 	remoteOpenCount := (*remoteStats)["open"]
-	sbsMu.Unlock()
 
 	// Serveblob - blobs come from local
 	for _, dr := range te.inRemote {
@@ -408,8 +403,6 @@ func testProxyStoreServe(t *testing.T, te *testEnv, numClients int) {
 	remoteStats = te.RemoteStats()
 
 	// Ensure remote unchanged
-	sbsMu.Lock()
-	defer sbsMu.Unlock()
 	if (*remoteStats)["stat"] != remoteStatCount && (*remoteStats)["open"] != remoteOpenCount {
 		t.Fatalf("unexpected remote stats: %#v", remoteStats)
 	}

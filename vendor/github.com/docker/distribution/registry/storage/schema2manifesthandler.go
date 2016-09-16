@@ -1,10 +1,11 @@
 package storage
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
+
+	"encoding/json"
 
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/context"
@@ -20,10 +21,9 @@ var (
 
 //schema2ManifestHandler is a ManifestHandler that covers schema2 manifests.
 type schema2ManifestHandler struct {
-	repository   distribution.Repository
-	blobStore    distribution.BlobStore
-	ctx          context.Context
-	manifestURLs manifestURLs
+	repository *repository
+	blobStore  *linkedBlobStore
+	ctx        context.Context
 }
 
 var _ ManifestHandler = &schema2ManifestHandler{}
@@ -62,6 +62,11 @@ func (ms *schema2ManifestHandler) Put(ctx context.Context, manifest distribution
 		return "", err
 	}
 
+	// Link the revision into the repository.
+	if err := ms.blobStore.linkBlob(ctx, revision); err != nil {
+		return "", err
+	}
+
 	return revision.Digest, nil
 }
 
@@ -97,14 +102,11 @@ func (ms *schema2ManifestHandler) verifyManifest(ctx context.Context, mnfst sche
 				if len(fsLayer.URLs) == 0 {
 					err = errMissingURL
 				}
-				allow := ms.manifestURLs.allow
-				deny := ms.manifestURLs.deny
 				for _, u := range fsLayer.URLs {
 					var pu *url.URL
 					pu, err = url.Parse(u)
-					if err != nil || (pu.Scheme != "http" && pu.Scheme != "https") || pu.Fragment != "" || (allow != nil && !allow.MatchString(u)) || (deny != nil && deny.MatchString(u)) {
+					if err != nil || (pu.Scheme != "http" && pu.Scheme != "https") || pu.Fragment != "" {
 						err = errInvalidURL
-						break
 					}
 				}
 			}

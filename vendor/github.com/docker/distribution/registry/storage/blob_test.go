@@ -16,7 +16,7 @@ import (
 	"github.com/docker/distribution/digest"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/storage/cache/memory"
-	"github.com/docker/distribution/registry/storage/driver/testdriver"
+	"github.com/docker/distribution/registry/storage/driver/inmemory"
 	"github.com/docker/distribution/testutil"
 )
 
@@ -25,7 +25,7 @@ import (
 func TestWriteSeek(t *testing.T) {
 	ctx := context.Background()
 	imageName, _ := reference.ParseNamed("foo/bar")
-	driver := testdriver.New()
+	driver := inmemory.New()
 	registry, err := NewRegistry(ctx, driver, BlobDescriptorCacheProvider(memory.NewInMemoryBlobDescriptorCacheProvider()), EnableDelete, EnableRedirect)
 	if err != nil {
 		t.Fatalf("error creating registry: %v", err)
@@ -43,7 +43,6 @@ func TestWriteSeek(t *testing.T) {
 	}
 	contents := []byte{1, 2, 3}
 	blobUpload.Write(contents)
-	blobUpload.Close()
 	offset := blobUpload.Size()
 	if offset != int64(len(contents)) {
 		t.Fatalf("unexpected value for blobUpload offset:  %v != %v", offset, len(contents))
@@ -61,7 +60,7 @@ func TestSimpleBlobUpload(t *testing.T) {
 
 	ctx := context.Background()
 	imageName, _ := reference.ParseNamed("foo/bar")
-	driver := testdriver.New()
+	driver := inmemory.New()
 	registry, err := NewRegistry(ctx, driver, BlobDescriptorCacheProvider(memory.NewInMemoryBlobDescriptorCacheProvider()), EnableDelete, EnableRedirect)
 	if err != nil {
 		t.Fatalf("error creating registry: %v", err)
@@ -122,12 +121,11 @@ func TestSimpleBlobUpload(t *testing.T) {
 		t.Fatalf("layer data write incomplete")
 	}
 
-	blobUpload.Close()
-
 	offset := blobUpload.Size()
 	if offset != nn {
 		t.Fatalf("blobUpload not updated with correct offset: %v != %v", offset, nn)
 	}
+	blobUpload.Close()
 
 	// Do a resume, for good fun
 	blobUpload, err = bs.Resume(ctx, blobUpload.ID())
@@ -256,7 +254,7 @@ func TestSimpleBlobUpload(t *testing.T) {
 func TestSimpleBlobRead(t *testing.T) {
 	ctx := context.Background()
 	imageName, _ := reference.ParseNamed("foo/bar")
-	driver := testdriver.New()
+	driver := inmemory.New()
 	registry, err := NewRegistry(ctx, driver, BlobDescriptorCacheProvider(memory.NewInMemoryBlobDescriptorCacheProvider()), EnableDelete, EnableRedirect)
 	if err != nil {
 		t.Fatalf("error creating registry: %v", err)
@@ -368,7 +366,7 @@ func TestBlobMount(t *testing.T) {
 	ctx := context.Background()
 	imageName, _ := reference.ParseNamed("foo/bar")
 	sourceImageName, _ := reference.ParseNamed("foo/source")
-	driver := testdriver.New()
+	driver := inmemory.New()
 	registry, err := NewRegistry(ctx, driver, BlobDescriptorCacheProvider(memory.NewInMemoryBlobDescriptorCacheProvider()), EnableDelete, EnableRedirect)
 	if err != nil {
 		t.Fatalf("error creating registry: %v", err)
@@ -519,7 +517,7 @@ func TestBlobMount(t *testing.T) {
 func TestLayerUploadZeroLength(t *testing.T) {
 	ctx := context.Background()
 	imageName, _ := reference.ParseNamed("foo/bar")
-	driver := testdriver.New()
+	driver := inmemory.New()
 	registry, err := NewRegistry(ctx, driver, BlobDescriptorCacheProvider(memory.NewInMemoryBlobDescriptorCacheProvider()), EnableDelete, EnableRedirect)
 	if err != nil {
 		t.Fatalf("error creating registry: %v", err)

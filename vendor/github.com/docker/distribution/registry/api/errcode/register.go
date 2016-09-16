@@ -55,7 +55,7 @@ var (
 		HTTPStatusCode: http.StatusForbidden,
 	})
 
-	// ErrorCodeUnavailable provides a common error to report unavailability
+	// ErrorCodeUnavailable provides a common error to report unavialability
 	// of a service or endpoint.
 	ErrorCodeUnavailable = Register("errcode", ErrorDescriptor{
 		Value:          "UNAVAILABLE",
@@ -71,7 +71,10 @@ var (
 		Message: "too many requests",
 		Description: `Returned when a client attempts to contact a
 		service too many times`,
-		HTTPStatusCode: http.StatusTooManyRequests,
+		// FIXME: go1.5 doesn't export http.StatusTooManyRequests while
+		// go1.6 does. Update the hardcoded value to the constant once
+		// Docker updates golang version to 1.6.
+		HTTPStatusCode: 429,
 	})
 )
 

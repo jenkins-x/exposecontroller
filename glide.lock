@@ -1,8 +1,8 @@
-hash: 29d846bcfadc962972c841eee070b3a36c2fe662ead33c5ff5d821daaa4a9297
-updated: 2016-09-16T11:06:47.042511781+01:00
+hash: 3ddce61275b7ef790f128290a6719e132b4cc79def185547f8575d3fe6512219
+updated: 2016-09-16T22:35:26.82105966+01:00
 imports:
 - name: cloud.google.com/go
-  version: 99eed3309ff7980d16154d2258600a5b38b129a9
+  version: 5fc8cacc02cfbb40ba736daedf7572d16decf187
   subpackages:
   - compute/metadata
   - internal
@@ -23,7 +23,7 @@ imports:
   - oauth2
   - oidc
 - name: github.com/coreos/pkg
-  version: 7f080b6c11ac2d2347c3cd7521e810207ea1a041
+  version: 3ac0863d7acf3bc44daf49afef8919af12f704ef
   subpackages:
   - health
   - httputil
@@ -32,15 +32,37 @@ imports:
   version: 6d212800a42e8ab5c146b8ace3490ee17e5225f9
   subpackages:
   - spew
+- name: github.com/dgrijalva/jwt-go
+  version: 5ca80149b9d3f8b863af0e2bb6742e608603bd99
 - name: github.com/docker/distribution
-  version: b6e0cfbdaa1ddc3a17c95142c7bf6e42c5567370
+  version: 559433598c7be9d30d6cfc5cad5b5dfdb686725c
+  repo: git://github.com/openshift/docker-distribution.git
+  vcs: git
   subpackages:
+  - context
   - digest
+  - manifest
+  - manifest/schema1
+  - manifest/schema2
   - reference
+  - uuid
 - name: github.com/docker/docker
-  version: 76ee0e8185d4219bd8539ca8f33d387376422ef4
+  version: 94bc2b1bc07843087c0096d06fdb56d70aa45a02
   subpackages:
+  - api/types/filters
+  - api/types/versions
+  - opts
+  - pkg/archive
+  - pkg/fileutils
+  - pkg/homedir
+  - pkg/idtools
+  - pkg/ioutils
+  - pkg/longpath
   - pkg/mount
+  - pkg/pools
+  - pkg/promise
+  - pkg/stdcopy
+  - pkg/system
 - name: github.com/docker/engine-api
   version: 4290f40c056686fcaa5c9caf02eac1dde9315adf
   subpackages:
@@ -60,6 +82,8 @@ imports:
   - nat
 - name: github.com/docker/go-units
   version: f2145db703495b2e525c59662db69a7344b00bb8
+- name: github.com/docker/libtrust
+  version: aabc10ec26b754e797f9028f4589c5b7bd90dc20
 - name: github.com/emicklei/go-restful
   version: 7dd77babc0fbac18c02f6968b4dcf69e9c43bc73
   subpackages:
@@ -67,6 +91,8 @@ imports:
   - swagger
 - name: github.com/evanphx/json-patch
   version: 30afec6a1650c11c861dc1fb58e100cd5219e490
+- name: github.com/fsouza/go-dockerclient
+  version: 01804dec8a84d0a77e63611f2b62d33e9bb2b64a
 - name: github.com/ghodss/yaml
   version: aa0c862057666179de291b67d9f093d12b5a8473
 - name: github.com/gogo/protobuf
@@ -89,6 +115,12 @@ imports:
   - info/v1
 - name: github.com/google/gofuzz
   version: fd52762d25a41827db7ef64c43756fd4b9f7e382
+- name: github.com/gorilla/context
+  version: 08b5f424b9271eedf6f9f0ce86cb9396ed337a42
+- name: github.com/gorilla/mux
+  version: 0a192a193177452756c362c20087ddafcf6829c4
+- name: github.com/hashicorp/go-cleanhttp
+  version: ad28ea4487f05916463e2423a55166280e8254b5
 - name: github.com/imdario/mergo
   version: 6633656539c1639d9d78127b7d47c622b5d7b6dc
 - name: github.com/inconshreveable/mousetrap
@@ -109,16 +141,32 @@ imports:
   - libcontainer/cgroups/fs
   - libcontainer/configs
   - libcontainer/system
+  - libcontainer/user
 - name: github.com/openshift/origin
-  version: e9081aee47f71af8faeced24e991a6afcab2f12d
+  version: d45151824821195c9d3db7e5d2da0a1c982a614c
   subpackages:
+  - pkg/api/latest
+  - pkg/authorization/api
+  - pkg/build/api
   - pkg/client
+  - pkg/deploy/api
+  - pkg/image/api
+  - pkg/oauth/api
+  - pkg/project/api
+  - pkg/quota/api
+  - pkg/quota/util
+  - pkg/route/api
+  - pkg/sdn/api
+  - pkg/template/api
+  - pkg/user/api
+  - pkg/util/namer
+  - pkg/version
 - name: github.com/pborman/uuid
   version: b984ec7fa9ff9e428bd0cf0abf429384dfbe3e37
 - name: github.com/pkg/errors
-  version: 17b591df37844cde689f4d5813e5cea0927d8dd2
+  version: a887431f7f6ef7687b556dbf718d9f351d4858a0
 - name: github.com/prometheus/client_golang
-  version: 8aae34f3ffc9a93c75efeaad87bb192aa7750900
+  version: 5636dc67ae776adf5590da7349e70fbb9559972d
   subpackages:
   - prometheus
 - name: github.com/prometheus/client_model
@@ -133,6 +181,8 @@ imports:
   - model
 - name: github.com/prometheus/procfs
   version: abf152e5f3e97f2fafac028d2cc06c1feb87ffa5
+- name: github.com/Sirupsen/logrus
+  version: aaf92c95712104318fc35409745f1533aa5ff327
 - name: github.com/spf13/cobra
   version: 9c28e4bbd74e5c3ed7aacbc552b2cab7cfdfe744
 - name: github.com/spf13/pflag
@@ -158,7 +208,7 @@ imports:
   - jws
   - jwt
 - name: golang.org/x/sys
-  version: 30de6d19a3bd89a5f38ae4028e23aaa5582648af
+  version: 8f0908ab3b2457e2e15403d3697c9ef5cb4b57a9
   subpackages:
   - unix
 - name: google.golang.org/appengine
@@ -179,7 +229,7 @@ imports:
   version: 31c299268d302dd0aa9a0dcf765a3d58971ac83f
 - name: k8s.io/kubernetes
   version: 52492b4bff99ef3b8ca617d385a3ff0612f9402d
-  repo: git@github.com:openshift/kubernetes.git
+  repo: git://github.com/openshift/kubernetes.git
   vcs: git
   subpackages:
   - federation/apis/federation
@@ -235,6 +285,7 @@ imports:
   - pkg/apis/rbac
   - pkg/apis/rbac/install
   - pkg/apis/rbac/v1alpha1
+  - pkg/auth/authenticator
   - pkg/auth/user
   - pkg/capabilities
   - pkg/client/cache
@@ -283,6 +334,7 @@ imports:
   - pkg/runtime/serializer/versioning
   - pkg/security/podsecuritypolicy/util
   - pkg/securitycontextconstraints/util
+  - pkg/serviceaccount
   - pkg/storage
   - pkg/types
   - pkg/util

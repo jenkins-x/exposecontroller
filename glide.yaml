@@ -8,7 +8,7 @@ import:
 - package: github.com/spf13/pflag
 - package: k8s.io/kubernetes
   version: 52492b4bff99ef3b8ca617d385a3ff0612f9402d
-  repo: git@github.com:openshift/kubernetes.git
+  repo: git://github.com/openshift/kubernetes.git
   vcs: git
   subpackages:
   - pkg/api
@@ -27,3 +27,9 @@ import:
   - libcontainer
 - package: github.com/imdario/mergo
   version: 6633656539c1639d9d78127b7d47c622b5d7b6dc
+- package: github.com/Sirupsen/logrus
+  version: aaf92c95712104318fc35409745f1533aa5ff327
+- package: github.com/docker/distribution
+  version: 559433598c7be9d30d6cfc5cad5b5dfdb686725c
+  repo: git://github.com/openshift/docker-distribution.git
+  vcs: git

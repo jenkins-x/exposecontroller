@@ -58,7 +58,6 @@ func (bw *blobWriter) Commit(ctx context.Context, desc distribution.Descriptor) 
 	}
 
 	bw.Close()
-	desc.Size = bw.Size()
 
 	canonical, err := bw.validateBlob(ctx, desc)
 	if err != nil {
@@ -86,10 +85,10 @@ func (bw *blobWriter) Commit(ctx context.Context, desc distribution.Descriptor) 
 	return canonical, nil
 }
 
-// Cancel the blob upload process, releasing any resources associated with
+// Rollback the blob upload process, releasing any resources associated with
 // the writer and canceling the operation.
 func (bw *blobWriter) Cancel(ctx context.Context) error {
-	context.GetLogger(ctx).Debug("(*blobWriter).Cancel")
+	context.GetLogger(ctx).Debug("(*blobWriter).Rollback")
 	if err := bw.fileWriter.Cancel(); err != nil {
 		return err
 	}
@@ -142,7 +141,7 @@ func (bw *blobWriter) Close() error {
 		return errors.New("blobwriter close after commit")
 	}
 
-	if err := bw.storeHashState(bw.blobStore.ctx); err != nil && err != errResumableDigestNotAvailable {
+	if err := bw.storeHashState(bw.blobStore.ctx); err != nil {
 		return err
 	}
 
