@@ -111,7 +111,14 @@ func (s *NodePortStrategy) Add(svc *api.Service) error {
 		return errors.Wrap(err, "failed to create patch")
 	}
 	if patch != nil {
-		fmt.Printf("Sending %s\n", string(patch))
+		err = s.client.Patch(api.StrategicMergePatchType).
+			Resource("services").
+			Namespace(svc.Namespace).
+			Name(svc.Name).
+			Body(patch).Do().Error()
+		if err != nil {
+			return errors.Wrap(err, "failed to send patch")
+		}
 	}
 
 	return nil
@@ -134,7 +141,14 @@ func (s *NodePortStrategy) Remove(svc *api.Service) error {
 		return errors.Wrap(err, "failed to create patch")
 	}
 	if patch != nil {
-		fmt.Printf("Sending %s\n", string(patch))
+		err = s.client.Patch(api.StrategicMergePatchType).
+			Resource("services").
+			Namespace(svc.Namespace).
+			Name(svc.Name).
+			Body(patch).Do().Error()
+		if err != nil {
+			return errors.Wrap(err, "failed to send patch")
+		}
 	}
 
 	return nil
