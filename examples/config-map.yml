@@ -2,9 +2,9 @@ apiVersion: "v1"
 data:
   config.yml: |-
     domain: replace.me.io
-    exposer: Ingress
+    exposer: NodePort
     # exposer: LoadBalancer
-    # exposer: NodePort
+    # exposer: Ingress
     # exposer: Route
 kind: "ConfigMap"
 metadata:

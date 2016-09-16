@@ -19,5 +19,14 @@ spec:
         project: "exposecontroller"
     spec:
       containers:
-      - image: "fabric8/exposecontroller"
+      - image: "fabric8/exposecontroller:dev"
         name: "exposecontroller"
+        args:
+          - --v=8
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/exposecontroller
+      volumes:
+      - name: config-volume
+        configMap:
+          name: exposecontroller-cm
