@@ -26,7 +26,7 @@ const (
 var (
 	flags = pflag.NewFlagSet("", pflag.ExitOnError)
 
-	configFile = flags.String("config", "/etc/exposecontroller.yml",
+	configFile = flags.String("config", "/etc/exposecontroller/config.yml",
 		`Path to the file that contains the exposecontroller configuration to use`)
 
 	resyncPeriod = flags.Duration("sync-period", 30*time.Second,
