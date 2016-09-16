@@ -88,13 +88,12 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 	if createIngress {
 		_, err := s.client.Ingress(ingress.Namespace).Create(ingress)
 		if err != nil {
-			return errors.Wrapf(err, "Failed to create ingress %s/%s", ingress.Namespace, ingress.Name)
+			return errors.Wrapf(err, "failed to create ingress %s/%s", ingress.Namespace, ingress.Name)
 		}
 	} else {
-		ingress.Spec.Rules[0].Host = hostName
 		_, err := s.client.Ingress(svc.Namespace).Update(ingress)
 		if err != nil {
-			return errors.Wrapf(err, "Failed to update ingress %s/%s", ingress.Namespace, ingress.Name)
+			return errors.Wrapf(err, "failed to update ingress %s/%s", ingress.Namespace, ingress.Name)
 		}
 	}
 
