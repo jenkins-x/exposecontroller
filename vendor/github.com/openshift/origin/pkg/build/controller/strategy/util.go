@@ -25,7 +25,7 @@ const (
 	sourceSecretMountPath          = "/var/run/secrets/openshift.io/source"
 )
 
-var whitelistEnvVarNames = []string{"BUILD_LOGLEVEL"}
+var whitelistEnvVarNames = []string{"BUILD_LOGLEVEL", "GIT_SSL_NO_VERIFY"}
 
 // FatalError is an error which can't be retried.
 type FatalError string
@@ -257,5 +257,5 @@ func getContainerVerbosity(containerEnv []kapi.EnvVar) (verbosity string) {
 
 // getPodLabels creates labels for the Build Pod
 func getPodLabels(build *buildapi.Build) map[string]string {
-	return map[string]string{buildapi.BuildLabel: build.Name}
+	return map[string]string{buildapi.BuildLabel: buildapi.LabelValue(build.Name)}
 }

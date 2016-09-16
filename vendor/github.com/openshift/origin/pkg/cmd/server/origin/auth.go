@@ -12,7 +12,7 @@ import (
 
 	"github.com/RangelReale/osin"
 	"github.com/RangelReale/osincli"
-	"github.com/emicklei/go-restful"
+	restful "github.com/emicklei/go-restful"
 	"github.com/golang/glog"
 	"github.com/pborman/uuid"
 
@@ -65,6 +65,7 @@ import (
 	clientauthetcd "github.com/openshift/origin/pkg/oauth/registry/oauthclientauthorization/etcd"
 	"github.com/openshift/origin/pkg/oauth/server/osinserver"
 	"github.com/openshift/origin/pkg/oauth/server/osinserver/registrystorage"
+	saoauth "github.com/openshift/origin/pkg/serviceaccounts/oauthclient"
 )
 
 const (
@@ -83,13 +84,29 @@ const (
 func (c *AuthConfig) InstallAPI(container *restful.Container) ([]string, error) {
 	mux := c.getMux(container)
 
-	accessTokenStorage := accesstokenetcd.NewREST(c.EtcdHelper, c.EtcdBackends...)
-	accessTokenRegistry := accesstokenregistry.NewRegistry(accessTokenStorage)
-	authorizeTokenStorage := authorizetokenetcd.NewREST(c.EtcdHelper, c.EtcdBackends...)
-	authorizeTokenRegistry := authorizetokenregistry.NewRegistry(authorizeTokenStorage)
-	clientStorage := clientetcd.NewREST(c.EtcdHelper)
+	clientStorage, err := clientetcd.NewREST(c.RESTOptionsGetter)
+	if err != nil {
+		return nil, err
+	}
 	clientRegistry := clientregistry.NewRegistry(clientStorage)
-	clientAuthStorage := clientauthetcd.NewREST(c.EtcdHelper)
+	combinedOAuthClientGetter := saoauth.NewServiceAccountOAuthClientGetter(c.KubeClient, c.KubeClient, clientRegistry, oauthapi.GrantHandlerType(c.Options.GrantConfig.ServiceAccountMethod))
+
+	accessTokenStorage, err := accesstokenetcd.NewREST(c.RESTOptionsGetter, combinedOAuthClientGetter, c.EtcdBackends...)
+	if err != nil {
+		return nil, err
+	}
+	accessTokenRegistry := accesstokenregistry.NewRegistry(accessTokenStorage)
+
+	authorizeTokenStorage, err := authorizetokenetcd.NewREST(c.RESTOptionsGetter, combinedOAuthClientGetter, c.EtcdBackends...)
+	if err != nil {
+		return nil, err
+	}
+	authorizeTokenRegistry := authorizetokenregistry.NewRegistry(authorizeTokenStorage)
+
+	clientAuthStorage, err := clientauthetcd.NewREST(c.RESTOptionsGetter, combinedOAuthClientGetter)
+	if err != nil {
+		return nil, err
+	}
 	clientAuthRegistry := clientauthregistry.NewRegistry(clientAuthStorage)
 
 	errorPageHandler, err := c.getErrorHandler()
@@ -102,7 +119,7 @@ func (c *AuthConfig) InstallAPI(container *restful.Container) ([]string, error) 
 		glog.Fatal(err)
 	}
 
-	storage := registrystorage.New(accessTokenRegistry, authorizeTokenRegistry, clientRegistry, registry.NewUserConversion())
+	storage := registrystorage.New(accessTokenRegistry, authorizeTokenRegistry, combinedOAuthClientGetter, registry.NewUserConversion())
 	config := osinserver.NewDefaultServerConfig()
 	if c.Options.TokenConfig.AuthorizeTokenMaxAgeSeconds > 0 {
 		config.AuthorizationExpiration = c.Options.TokenConfig.AuthorizeTokenMaxAgeSeconds
@@ -112,7 +129,7 @@ func (c *AuthConfig) InstallAPI(container *restful.Container) ([]string, error) 
 	}
 
 	grantChecker := registry.NewClientAuthorizationGrantChecker(clientAuthRegistry)
-	grantHandler := c.getGrantHandler(mux, authRequestHandler, clientRegistry, clientAuthRegistry)
+	grantHandler := c.getGrantHandler(mux, authRequestHandler, combinedOAuthClientGetter, clientAuthRegistry)
 
 	server := osinserver.New(
 		config,
@@ -258,6 +275,12 @@ func ensureOAuthClient(client oauthapi.OAuthClient, clientRegistry clientregistr
 		}
 		existing.RedirectURIs = client.RedirectURIs
 
+		// If the GrantMethod is present, keep it for compatibility
+		// If it is empty, assign the requested strategy.
+		if len(existing.GrantMethod) == 0 {
+			existing.GrantMethod = client.GrantMethod
+		}
+
 		_, err = clientRegistry.UpdateClient(ctx, existing)
 		return err
 	})
@@ -270,6 +293,7 @@ func CreateOrUpdateDefaultOAuthClients(masterPublicAddr string, assetPublicAddre
 			Secret:                uuid.New(),
 			RespondWithChallenges: false,
 			RedirectURIs:          assetPublicAddresses,
+			GrantMethod:           oauthapi.GrantHandlerAuto,
 		}
 		if err := ensureOAuthClient(webConsoleClient, clientRegistry, true); err != nil {
 			return err
@@ -282,6 +306,7 @@ func CreateOrUpdateDefaultOAuthClients(masterPublicAddr string, assetPublicAddre
 			Secret:                uuid.New(),
 			RespondWithChallenges: false,
 			RedirectURIs:          []string{masterPublicAddr + path.Join(OpenShiftOAuthAPIPrefix, tokenrequest.DisplayTokenEndpoint)},
+			GrantMethod:           oauthapi.GrantHandlerAuto,
 		}
 		if err := ensureOAuthClient(browserClient, clientRegistry, true); err != nil {
 			return err
@@ -294,6 +319,7 @@ func CreateOrUpdateDefaultOAuthClients(masterPublicAddr string, assetPublicAddre
 			Secret:                uuid.New(),
 			RespondWithChallenges: true,
 			RedirectURIs:          []string{masterPublicAddr + path.Join(OpenShiftOAuthAPIPrefix, tokenrequest.ImplicitTokenEndpoint)},
+			GrantMethod:           oauthapi.GrantHandlerAuto,
 		}
 		if err := ensureOAuthClient(cliClient, clientRegistry, false); err != nil {
 			return err
@@ -324,38 +350,34 @@ func (c *AuthConfig) getAuthorizeAuthenticationHandlers(mux cmdutil.Mux, errorHa
 }
 
 // getGrantHandler returns the object that handles approving or rejecting grant requests
-func (c *AuthConfig) getGrantHandler(mux cmdutil.Mux, auth authenticator.Request, clientregistry clientregistry.Registry, authregistry clientauthregistry.Registry) handlers.GrantHandler {
-	switch c.Options.GrantConfig.Method {
-	case configapi.GrantHandlerDeny:
-		return handlers.NewEmptyGrant()
-
-	case configapi.GrantHandlerAuto:
-		return handlers.NewAutoGrant()
-
-	case configapi.GrantHandlerPrompt:
-		grantServer := grant.NewGrant(c.getCSRF(), auth, grant.DefaultFormRenderer, clientregistry, authregistry)
-		grantServer.Install(mux, OpenShiftApprovePrefix)
-		return handlers.NewRedirectGrant(OpenShiftApprovePrefix)
-
-	default:
-		glog.Fatalf("No grant handler found that matches %v.  The oauth server cannot start!", c.Options.GrantConfig.Method)
+func (c *AuthConfig) getGrantHandler(mux cmdutil.Mux, auth authenticator.Request, clientregistry clientregistry.Getter, authregistry clientauthregistry.Registry) handlers.GrantHandler {
+	// check that the global default strategy is something we honor
+	if !configapi.ValidGrantHandlerTypes.Has(string(c.Options.GrantConfig.Method)) {
+		glog.Fatalf("No grant handler found that matches %v.  The OAuth server cannot start!", c.Options.GrantConfig.Method)
 	}
 
-	return nil
+	// Since any OAuth client could require prompting, we will unconditionally
+	// start the GrantServer here.
+	grantServer := grant.NewGrant(c.getCSRF(), auth, grant.DefaultFormRenderer, clientregistry, authregistry)
+	grantServer.Install(mux, OpenShiftApprovePrefix)
+
+	// Set defaults for standard clients. These can be overridden.
+	return handlers.NewPerClientGrant(handlers.NewRedirectGrant(OpenShiftApprovePrefix),
+		oauthapi.GrantHandlerType(c.Options.GrantConfig.Method))
 }
 
 // getAuthenticationFinalizer returns an authentication finalizer which is called just prior to writing a response to an authorization request
 func (c *AuthConfig) getAuthenticationFinalizer() osinserver.AuthorizeHandler {
 	if c.SessionAuth != nil {
 		// The session needs to know the authorize flow is done so it can invalidate the session
-		return osinserver.AuthorizeHandlerFunc(func(ar *osin.AuthorizeRequest, w http.ResponseWriter) (bool, error) {
+		return osinserver.AuthorizeHandlerFunc(func(ar *osin.AuthorizeRequest, resp *osin.Response, w http.ResponseWriter) (bool, error) {
 			_ = c.SessionAuth.InvalidateAuthentication(w, ar.HttpRequest)
 			return false, nil
 		})
 	}
 
 	// Otherwise return a no-op finalizer
-	return osinserver.AuthorizeHandlerFunc(func(ar *osin.AuthorizeRequest, w http.ResponseWriter) (bool, error) {
+	return osinserver.AuthorizeHandlerFunc(func(ar *osin.AuthorizeRequest, resp *osin.Response, w http.ResponseWriter) (bool, error) {
 		return false, nil
 	})
 }
@@ -457,17 +479,18 @@ func (c *AuthConfig) getAuthenticationHandler(mux cmdutil.Mux, errorHandler hand
 			oauthErrorHandler := handlers.AuthenticationErrorHandlers{errorHandler, state}
 
 			callbackPath := path.Join(OpenShiftOAuthCallbackPrefix, identityProvider.Name)
-			oauthHandler, err := external.NewExternalOAuthRedirector(oauthProvider, state, c.Options.MasterPublicURL+callbackPath, oauthSuccessHandler, oauthErrorHandler, identityMapper)
+			oauthRedirector, oauthHandler, err := external.NewExternalOAuthRedirector(oauthProvider, state, c.Options.MasterPublicURL+callbackPath, oauthSuccessHandler, oauthErrorHandler, identityMapper)
 			if err != nil {
 				return nil, fmt.Errorf("unexpected error: %v", err)
 			}
 
 			mux.Handle(callbackPath, oauthHandler)
 			if identityProvider.UseAsLogin {
-				redirectors.Add(identityProvider.Name, oauthHandler)
+				redirectors.Add(identityProvider.Name, oauthRedirector)
 			}
 			if identityProvider.UseAsChallenger {
-				return nil, errors.New("oauth identity providers cannot issue challenges")
+				// For now, all password challenges share a single basic challenger, since they'll all respond to any basic credentials
+				challengers["basic-challenge"] = passwordchallenger.NewBasicAuthChallenger("openshift")
 			}
 		} else if requestHeaderProvider, isRequestHeader := identityProvider.Provider.(*configapi.RequestHeaderIdentityProvider); isRequestHeader {
 			// We might be redirecting to an external site, we need to fully resolve the request URL to the public master
@@ -670,6 +693,18 @@ func (c *AuthConfig) getAuthenticationRequestHandler() (authenticator.Request, e
 				return nil, err
 			}
 			authRequestHandlers = append(authRequestHandlers, basicauthrequest.NewBasicAuthAuthentication(identityProvider.Name, passwordAuthenticator, true))
+
+		} else if identityProvider.UseAsChallenger && configapi.IsOAuthIdentityProvider(identityProvider) {
+			oauthProvider, err := c.getOAuthProvider(identityProvider)
+			if err != nil {
+				return nil, err
+			}
+			oauthPasswordAuthenticator, err := external.NewOAuthPasswordAuthenticator(oauthProvider, identityMapper)
+			if err != nil {
+				return nil, fmt.Errorf("unexpected error: %v", err)
+			}
+
+			authRequestHandlers = append(authRequestHandlers, basicauthrequest.NewBasicAuthAuthentication(identityProvider.Name, oauthPasswordAuthenticator, true))
 
 		} else {
 			switch provider := identityProvider.Provider.(type) {

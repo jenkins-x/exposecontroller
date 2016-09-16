@@ -1,5 +1,3 @@
-// +build integration
-
 package integration
 
 import (
@@ -125,7 +123,12 @@ func admissionTestPod() *kapi.Pod {
 }
 
 func admissionTestBuild() *buildapi.Build {
-	build := &buildapi.Build{}
+	build := &buildapi.Build{ObjectMeta: kapi.ObjectMeta{
+		Labels: map[string]string{
+			buildapi.BuildConfigLabel:    "mock-build-config",
+			buildapi.BuildRunPolicyLabel: string(buildapi.BuildRunPolicyParallel),
+		},
+	}}
 	build.Name = "test-build"
 	build.Spec.Source.Git = &buildapi.GitBuildSource{URI: "http://build.uri/build"}
 	build.Spec.Strategy.DockerStrategy = &buildapi.DockerBuildStrategy{}
@@ -184,6 +187,7 @@ func setupAdmissionPluginTestConfig(t *testing.T, value string) string {
 }
 
 func TestKubernetesAdmissionPluginOrderOverride(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	registerAdmissionPlugins(t, "plugin1", "plugin2", "plugin3")
 	kubeClient, _ := setupAdmissionTest(t, func(config *configapi.MasterConfig) {
 		config.KubernetesMasterConfig.AdmissionConfig.PluginOrderOverride = []string{"plugin1", "plugin2"}
@@ -199,6 +203,7 @@ func TestKubernetesAdmissionPluginOrderOverride(t *testing.T) {
 }
 
 func TestKubernetesAdmissionPluginConfigFile(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	registerAdmissionPluginTestConfigType()
 	configFile := setupAdmissionPluginTestConfig(t, "plugin1configvalue")
 	registerAdmissionPlugins(t, "plugin1", "plugin2")
@@ -217,6 +222,7 @@ func TestKubernetesAdmissionPluginConfigFile(t *testing.T) {
 }
 
 func TestKubernetesAdmissionPluginEmbeddedConfig(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	registerAdmissionPluginTestConfigType()
 	registerAdmissionPlugins(t, "plugin1", "plugin2")
 	kubeClient, _ := setupAdmissionTest(t, func(config *configapi.MasterConfig) {
@@ -236,6 +242,7 @@ func TestKubernetesAdmissionPluginEmbeddedConfig(t *testing.T) {
 }
 
 func TestOpenshiftAdmissionPluginOrderOverride(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	registerAdmissionPlugins(t, "plugin1", "plugin2", "plugin3")
 	_, openshiftClient := setupAdmissionTest(t, func(config *configapi.MasterConfig) {
 		config.AdmissionConfig.PluginOrderOverride = []string{"plugin1", "plugin2"}
@@ -251,6 +258,7 @@ func TestOpenshiftAdmissionPluginOrderOverride(t *testing.T) {
 }
 
 func TestOpenshiftAdmissionPluginConfigFile(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	registerAdmissionPluginTestConfigType()
 	configFile := setupAdmissionPluginTestConfig(t, "plugin2configvalue")
 	registerAdmissionPlugins(t, "plugin1", "plugin2")
@@ -269,6 +277,7 @@ func TestOpenshiftAdmissionPluginConfigFile(t *testing.T) {
 }
 
 func TestOpenshiftAdmissionPluginEmbeddedConfig(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	registerAdmissionPluginTestConfigType()
 	registerAdmissionPlugins(t, "plugin1", "plugin2")
 	_, openshiftClient := setupAdmissionTest(t, func(config *configapi.MasterConfig) {
@@ -284,5 +293,98 @@ func TestOpenshiftAdmissionPluginEmbeddedConfig(t *testing.T) {
 	createdBuild, err := openshiftClient.Builds(kapi.NamespaceDefault).Create(admissionTestBuild())
 	if err = checkAdmissionObjectLabelValues(createdBuild.Labels, map[string]string{"plugin1": "default", "plugin2": "embeddedvalue2"}); err != nil {
 		t.Errorf("Error: %v", err)
+	}
+}
+
+func TestAlwaysPullImagesOn(t *testing.T) {
+	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
+
+	masterConfig, err := testserver.DefaultMasterOptions()
+	if err != nil {
+		t.Fatalf("error creating config: %v", err)
+	}
+	masterConfig.KubernetesMasterConfig.AdmissionConfig.PluginConfig = map[string]configapi.AdmissionPluginConfig{
+		"AlwaysPullImages": {
+			Configuration: &configapi.DefaultAdmissionConfig{},
+		},
+	}
+	kubeConfigFile, err := testserver.StartConfiguredMaster(masterConfig)
+	if err != nil {
+		t.Fatalf("error starting server: %v", err)
+	}
+	kubeClient, err := testutil.GetClusterAdminKubeClient(kubeConfigFile)
+	if err != nil {
+		t.Fatalf("error getting client: %v", err)
+	}
+
+	ns := &kapi.Namespace{}
+	ns.Name = testutil.Namespace()
+	_, err = kubeClient.Namespaces().Create(ns)
+	if err != nil {
+		t.Fatalf("error creating namespace: %v", err)
+	}
+	if err := testserver.WaitForPodCreationServiceAccounts(kubeClient, testutil.Namespace()); err != nil {
+		t.Fatalf("error getting client config: %v", err)
+	}
+
+	testPod := &kapi.Pod{}
+	testPod.GenerateName = "test"
+	testPod.Spec.Containers = []kapi.Container{
+		{
+			Name:            "container",
+			Image:           "openshift/origin-pod:notlatest",
+			ImagePullPolicy: kapi.PullNever,
+		},
+	}
+
+	actualPod, err := kubeClient.Pods(testutil.Namespace()).Create(testPod)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if actualPod.Spec.Containers[0].ImagePullPolicy != kapi.PullAlways {
+		t.Errorf("expected %v, got %v", kapi.PullAlways, actualPod.Spec.Containers[0].ImagePullPolicy)
+	}
+}
+
+func TestAlwaysPullImagesOff(t *testing.T) {
+	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
+
+	_, kubeConfigFile, err := testserver.StartTestMaster()
+	if err != nil {
+		t.Fatalf("error starting server: %v", err)
+	}
+	kubeClient, err := testutil.GetClusterAdminKubeClient(kubeConfigFile)
+	if err != nil {
+		t.Fatalf("error getting client: %v", err)
+	}
+
+	ns := &kapi.Namespace{}
+	ns.Name = testutil.Namespace()
+	_, err = kubeClient.Namespaces().Create(ns)
+	if err != nil {
+		t.Fatalf("error creating namespace: %v", err)
+	}
+	if err := testserver.WaitForPodCreationServiceAccounts(kubeClient, testutil.Namespace()); err != nil {
+		t.Fatalf("error getting client config: %v", err)
+	}
+
+	testPod := &kapi.Pod{}
+	testPod.GenerateName = "test"
+	testPod.Spec.Containers = []kapi.Container{
+		{
+			Name:            "container",
+			Image:           "openshift/origin-pod:notlatest",
+			ImagePullPolicy: kapi.PullNever,
+		},
+	}
+
+	actualPod, err := kubeClient.Pods(testutil.Namespace()).Create(testPod)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if actualPod.Spec.Containers[0].ImagePullPolicy != kapi.PullNever {
+		t.Errorf("expected %v, got %v", kapi.PullNever, actualPod.Spec.Containers[0].ImagePullPolicy)
 	}
 }

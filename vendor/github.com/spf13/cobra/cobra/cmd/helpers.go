@@ -104,7 +104,7 @@ func guessImportPath() string {
 		er("Cobra only supports project within $GOPATH")
 	}
 
-	return filepath.Clean(strings.TrimPrefix(projectPath, getSrcPath()))
+	return filepath.ToSlash(filepath.Clean(strings.TrimPrefix(projectPath, getSrcPath())))
 }
 
 func getSrcPath() string {
@@ -143,7 +143,7 @@ func guessProjectPath() {
 	srcPath := getSrcPath()
 	// if provided, inspect for logical locations
 	if strings.ContainsRune(inputPath, os.PathSeparator) {
-		if filepath.IsAbs(inputPath) {
+		if filepath.IsAbs(inputPath) || filepath.HasPrefix(inputPath, string(os.PathSeparator)) {
 			// if Absolute, use it
 			projectPath = filepath.Clean(inputPath)
 			return
@@ -196,7 +196,7 @@ func isEmpty(path string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		list, err := f.Readdir(-1)
+		list, _ := f.Readdir(-1)
 		// f.Close() - see bug fix above
 		return len(list) == 0, nil
 	}
@@ -318,6 +318,15 @@ func whichLicense() string {
 	// TODO: Inspect project for existing license
 
 	// default to viper's setting
+
+	if viper.IsSet("license.header") || viper.IsSet("license.text") {
+		if custom, ok := Licenses["custom"]; ok {
+			custom.Header = viper.GetString("license.header")
+			custom.Text = viper.GetString("license.text")
+			Licenses["custom"] = custom
+			return "custom"
+		}
+	}
 
 	return matchLicense(viper.GetString("license"))
 }

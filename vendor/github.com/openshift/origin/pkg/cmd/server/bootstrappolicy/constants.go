@@ -16,9 +16,10 @@ const (
 	RouterUnqualifiedUsername   = "openshift-router"
 	RegistryUnqualifiedUsername = "openshift-registry"
 
-	MasterUsername   = "system:" + MasterUnqualifiedUsername
-	RouterUsername   = "system:" + RouterUnqualifiedUsername
-	RegistryUsername = "system:" + RegistryUnqualifiedUsername
+	MasterUsername      = "system:" + MasterUnqualifiedUsername
+	RouterUsername      = "system:" + RouterUnqualifiedUsername
+	RegistryUsername    = "system:" + RegistryUnqualifiedUsername
+	SystemAdminUsername = "system:admin"
 
 	// Not granted any API permissions, just an identity for a client certificate for the API proxy to use
 	// Should not be changed without considering impact to pods that may be verifying this identity by default
@@ -50,28 +51,32 @@ const (
 
 // Roles
 const (
-	ClusterAdminRoleName    = "cluster-admin"
-	ClusterReaderRoleName   = "cluster-reader"
-	AdminRoleName           = "admin"
-	EditRoleName            = "edit"
-	ViewRoleName            = "view"
-	SelfProvisionerRoleName = "self-provisioner"
-	BasicUserRoleName       = "basic-user"
-	StatusCheckerRoleName   = "cluster-status"
+	ClusterAdminRoleName       = "cluster-admin"
+	SudoerRoleName             = "sudoer"
+	ClusterReaderRoleName      = "cluster-reader"
+	AdminRoleName              = "admin"
+	EditRoleName               = "edit"
+	ViewRoleName               = "view"
+	SelfProvisionerRoleName    = "self-provisioner"
+	BasicUserRoleName          = "basic-user"
+	StatusCheckerRoleName      = "cluster-status"
+	SelfAccessReviewerRoleName = "self-access-reviewer"
 
 	RegistryAdminRoleName  = "registry-admin"
 	RegistryViewerRoleName = "registry-viewer"
 	RegistryEditorRoleName = "registry-editor"
 
-	BuildStrategyDockerRoleName = "system:build-strategy-docker"
-	BuildStrategyCustomRoleName = "system:build-strategy-custom"
-	BuildStrategySourceRoleName = "system:build-strategy-source"
+	BuildStrategyDockerRoleName          = "system:build-strategy-docker"
+	BuildStrategyCustomRoleName          = "system:build-strategy-custom"
+	BuildStrategySourceRoleName          = "system:build-strategy-source"
+	BuildStrategyJenkinsPipelineRoleName = "system:build-strategy-jenkinspipeline"
 
 	ImageAuditorRoleName      = "system:image-auditor"
 	ImagePullerRoleName       = "system:image-puller"
 	ImagePusherRoleName       = "system:image-pusher"
 	ImageBuilderRoleName      = "system:image-builder"
 	ImagePrunerRoleName       = "system:image-pruner"
+	ImageSignerRoleName       = "system:image-signer"
 	DeployerRoleName          = "system:deployer"
 	RouterRoleName            = "system:router"
 	RegistryRoleName          = "system:registry"
@@ -94,33 +99,35 @@ const (
 
 // RoleBindings
 const (
-	SelfProvisionerRoleBindingName   = SelfProvisionerRoleName + "s"
-	DeployerRoleBindingName          = DeployerRoleName + "s"
-	ClusterAdminRoleBindingName      = ClusterAdminRoleName + "s"
-	ClusterReaderRoleBindingName     = ClusterReaderRoleName + "s"
-	BasicUserRoleBindingName         = BasicUserRoleName + "s"
-	OAuthTokenDeleterRoleBindingName = OAuthTokenDeleterRoleName + "s"
-	StatusCheckerRoleBindingName     = StatusCheckerRoleName + "-binding"
-	ImagePullerRoleBindingName       = ImagePullerRoleName + "s"
-	ImageBuilderRoleBindingName      = ImageBuilderRoleName + "s"
-	RouterRoleBindingName            = RouterRoleName + "s"
-	RegistryRoleBindingName          = RegistryRoleName + "s"
-	MasterRoleBindingName            = MasterRoleName + "s"
-	NodeRoleBindingName              = NodeRoleName + "s"
-	NodeProxierRoleBindingName       = NodeProxierRoleName + "s"
-	NodeAdminRoleBindingName         = NodeAdminRoleName + "s"
-	NodeReaderRoleBindingName        = NodeReaderRoleName + "s"
-	SDNReaderRoleBindingName         = SDNReaderRoleName + "s"
-	SDNManagerRoleBindingName        = SDNManagerRoleName + "s"
-	WebHooksRoleBindingName          = WebHooksRoleName + "s"
-	DiscoveryRoleBindingName         = DiscoveryRoleName + "-binding"
-	RegistryAdminRoleBindingName     = RegistryAdminRoleName + "s"
-	RegistryViewerRoleBindingName    = RegistryViewerRoleName + "s"
-	RegistryEditorRoleBindingName    = RegistryEditorRoleName + "s"
+	SelfAccessReviewerRoleBindingName = SelfAccessReviewerRoleName + "s"
+	SelfProvisionerRoleBindingName    = SelfProvisionerRoleName + "s"
+	DeployerRoleBindingName           = DeployerRoleName + "s"
+	ClusterAdminRoleBindingName       = ClusterAdminRoleName + "s"
+	ClusterReaderRoleBindingName      = ClusterReaderRoleName + "s"
+	BasicUserRoleBindingName          = BasicUserRoleName + "s"
+	OAuthTokenDeleterRoleBindingName  = OAuthTokenDeleterRoleName + "s"
+	StatusCheckerRoleBindingName      = StatusCheckerRoleName + "-binding"
+	ImagePullerRoleBindingName        = ImagePullerRoleName + "s"
+	ImageBuilderRoleBindingName       = ImageBuilderRoleName + "s"
+	RouterRoleBindingName             = RouterRoleName + "s"
+	RegistryRoleBindingName           = RegistryRoleName + "s"
+	MasterRoleBindingName             = MasterRoleName + "s"
+	NodeRoleBindingName               = NodeRoleName + "s"
+	NodeProxierRoleBindingName        = NodeProxierRoleName + "s"
+	NodeAdminRoleBindingName          = NodeAdminRoleName + "s"
+	NodeReaderRoleBindingName         = NodeReaderRoleName + "s"
+	SDNReaderRoleBindingName          = SDNReaderRoleName + "s"
+	SDNManagerRoleBindingName         = SDNManagerRoleName + "s"
+	WebHooksRoleBindingName           = WebHooksRoleName + "s"
+	DiscoveryRoleBindingName          = DiscoveryRoleName + "-binding"
+	RegistryAdminRoleBindingName      = RegistryAdminRoleName + "s"
+	RegistryViewerRoleBindingName     = RegistryViewerRoleName + "s"
+	RegistryEditorRoleBindingName     = RegistryEditorRoleName + "s"
 
-	BuildStrategyDockerRoleBindingName = BuildStrategyDockerRoleName + "-binding"
-	BuildStrategyCustomRoleBindingName = BuildStrategyCustomRoleName + "-binding"
-	BuildStrategySourceRoleBindingName = BuildStrategySourceRoleName + "-binding"
+	BuildStrategyDockerRoleBindingName          = BuildStrategyDockerRoleName + "-binding"
+	BuildStrategyCustomRoleBindingName          = BuildStrategyCustomRoleName + "-binding"
+	BuildStrategySourceRoleBindingName          = BuildStrategySourceRoleName + "-binding"
+	BuildStrategyJenkinsPipelineRoleBindingName = BuildStrategyJenkinsPipelineRoleName + "-binding"
 
 	OpenshiftSharedResourceViewRoleBindingName = OpenshiftSharedResourceViewRoleName + "s"
 )

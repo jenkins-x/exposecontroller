@@ -1,5 +1,3 @@
-// +build integration
-
 package integration
 
 import (
@@ -9,7 +7,7 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/diff"
 
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	stratsupport "github.com/openshift/origin/pkg/deploy/strategy/support"
@@ -20,6 +18,7 @@ import (
 
 func TestImageStreamList(t *testing.T) {
 	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMaster()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -49,6 +48,7 @@ func mockImageStream() *imageapi.ImageStream {
 
 func TestImageStreamCreate(t *testing.T) {
 	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMasterAPI()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -82,7 +82,7 @@ func TestImageStreamCreate(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 	if !reflect.DeepEqual(expected, actual) {
-		t.Errorf("unexpected object: %s", util.ObjectDiff(expected, actual))
+		t.Errorf("unexpected object: %s", diff.ObjectDiff(expected, actual))
 	}
 
 	streams, err := clusterAdminClient.ImageStreams(testutil.Namespace()).List(kapi.ListOptions{})
@@ -96,6 +96,7 @@ func TestImageStreamCreate(t *testing.T) {
 
 func TestImageStreamMappingCreate(t *testing.T) {
 	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMasterAPI()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -283,9 +284,15 @@ func TestImageStreamMappingCreate(t *testing.T) {
 
 func TestImageStreamTagLifecycleHook(t *testing.T) {
 	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMaster()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+
+	clusterAdminKubeClient, err := testutil.GetClusterAdminKubeClient(clusterAdminKubeConfig)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
 	}
 
 	clusterAdminClient, err := testutil.GetClusterAdminClient(clusterAdminKubeConfig)
@@ -303,7 +310,7 @@ func TestImageStreamTagLifecycleHook(t *testing.T) {
 	}
 
 	// can tag to a stream that exists
-	exec := stratsupport.NewHookExecutor(nil, clusterAdminClient, os.Stdout, kapi.Codecs.UniversalDecoder())
+	exec := stratsupport.NewHookExecutor(nil, clusterAdminClient, clusterAdminKubeClient.Events(""), os.Stdout, kapi.Codecs.UniversalDecoder())
 	err = exec.Execute(
 		&deployapi.LifecycleHook{
 			TagImages: []deployapi.TagImageHook{
@@ -328,7 +335,7 @@ func TestImageStreamTagLifecycleHook(t *testing.T) {
 				},
 			},
 		},
-		"test",
+		"test", "test",
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -341,7 +348,7 @@ func TestImageStreamTagLifecycleHook(t *testing.T) {
 	}
 
 	// can execute a second time the same tag and it should work
-	exec = stratsupport.NewHookExecutor(nil, clusterAdminClient, os.Stdout, kapi.Codecs.UniversalDecoder())
+	exec = stratsupport.NewHookExecutor(nil, clusterAdminClient, clusterAdminKubeClient.Events(""), os.Stdout, kapi.Codecs.UniversalDecoder())
 	err = exec.Execute(
 		&deployapi.LifecycleHook{
 			TagImages: []deployapi.TagImageHook{
@@ -366,14 +373,14 @@ func TestImageStreamTagLifecycleHook(t *testing.T) {
 				},
 			},
 		},
-		"test",
+		"test", "test",
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// can lifecycle tag a new image stream
-	exec = stratsupport.NewHookExecutor(nil, clusterAdminClient, os.Stdout, kapi.Codecs.UniversalDecoder())
+	exec = stratsupport.NewHookExecutor(nil, clusterAdminClient, clusterAdminKubeClient.Events(""), os.Stdout, kapi.Codecs.UniversalDecoder())
 	err = exec.Execute(
 		&deployapi.LifecycleHook{
 			TagImages: []deployapi.TagImageHook{
@@ -398,7 +405,7 @@ func TestImageStreamTagLifecycleHook(t *testing.T) {
 				},
 			},
 		},
-		"test",
+		"test", "test",
 	)
 	if err != nil {
 		t.Fatal(err)

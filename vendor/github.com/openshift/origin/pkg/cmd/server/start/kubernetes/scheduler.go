@@ -1,7 +1,6 @@
 package kubernetes
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"k8s.io/kubernetes/pkg/util"
+	kflag "k8s.io/kubernetes/pkg/util/flag"
 	schedulerapp "k8s.io/kubernetes/plugin/cmd/kube-scheduler/app"
 	scheduleroptions "k8s.io/kubernetes/plugin/cmd/kube-scheduler/app/options"
 )
@@ -41,8 +41,7 @@ func NewSchedulerCommand(name, fullName string, out io.Writer) *cobra.Command {
 	cmd.SetOutput(out)
 
 	flags := cmd.Flags()
-	flags.SetNormalizeFunc(util.WordSepNormalizeFunc)
-	flags.AddGoFlagSet(flag.CommandLine)
+	flags.SetNormalizeFunc(kflag.WordSepNormalizeFunc)
 	schedulerOptions.AddFlags(flags)
 
 	return cmd

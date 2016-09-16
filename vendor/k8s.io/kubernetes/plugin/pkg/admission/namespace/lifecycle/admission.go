@@ -26,6 +26,7 @@ import (
 	"k8s.io/kubernetes/pkg/admission"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/sets"
@@ -36,7 +37,7 @@ const PluginName = "NamespaceLifecycle"
 
 func init() {
 	admission.RegisterPlugin(PluginName, func(client clientset.Interface, config io.Reader) (admission.Interface, error) {
-		return NewLifecycle(client, sets.NewString(api.NamespaceDefault)), nil
+		return NewLifecycle(client, sets.NewString(api.NamespaceDefault, api.NamespaceSystem)), nil
 	})
 }
 
@@ -51,14 +52,14 @@ type lifecycle struct {
 
 func (l *lifecycle) Admit(a admission.Attributes) (err error) {
 	// prevent deletion of immortal namespaces
-	if a.GetOperation() == admission.Delete && a.GetKind() == api.Kind("Namespace") && l.immortalNamespaces.Has(a.GetName()) {
-		return errors.NewForbidden(a.GetResource(), a.GetName(), fmt.Errorf("this namespace may not be deleted"))
+	if a.GetOperation() == admission.Delete && a.GetKind().GroupKind() == api.Kind("Namespace") && l.immortalNamespaces.Has(a.GetName()) {
+		return errors.NewForbidden(a.GetResource().GroupResource(), a.GetName(), fmt.Errorf("this namespace may not be deleted"))
 	}
 
 	// if we're here, then we've already passed authentication, so we're allowed to do what we're trying to do
 	// if we're here, then the API server has found a route, which means that if we have a non-empty namespace
 	// its a namespaced resource.
-	if len(a.GetNamespace()) == 0 || a.GetKind() == api.Kind("Namespace") {
+	if len(a.GetNamespace()) == 0 || a.GetKind().GroupKind() == api.Kind("Namespace") {
 		// if a namespace is deleted, we want to prevent all further creates into it
 		// while it is undergoing termination.  to reduce incidences where the cache
 		// is slow to update, we forcefully remove the namespace from our local cache.
@@ -71,6 +72,11 @@ func (l *lifecycle) Admit(a admission.Attributes) (err error) {
 				},
 			})
 		}
+		return nil
+	}
+
+	// always allow access review checks.  Returning status about the namespace would be leaking information
+	if isAccessReview(a) {
 		return nil
 	}
 
@@ -133,4 +139,17 @@ func NewLifecycle(c clientset.Interface, immortalNamespaces sets.String) admissi
 		store:              store,
 		immortalNamespaces: immortalNamespaces,
 	}
+}
+
+// TODO move this upstream once they have namespaced access review checks
+var accessReviewResources = map[unversioned.GroupResource]bool{
+	unversioned.GroupResource{Group: "", Resource: "subjectaccessreviews"}:       true,
+	unversioned.GroupResource{Group: "", Resource: "localsubjectaccessreviews"}:  true,
+	unversioned.GroupResource{Group: "", Resource: "resourceaccessreviews"}:      true,
+	unversioned.GroupResource{Group: "", Resource: "localresourceaccessreviews"}: true,
+	unversioned.GroupResource{Group: "", Resource: "selfsubjectrulesreviews"}:    true,
+}
+
+func isAccessReview(a admission.Attributes) bool {
+	return accessReviewResources[a.GetResource().GroupResource()]
 }

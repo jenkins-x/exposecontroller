@@ -12,8 +12,22 @@ import (
 	"github.com/openshift/origin/pkg/cmd/cli/describe"
 	"github.com/openshift/origin/pkg/generate/app"
 	imageapi "github.com/openshift/origin/pkg/image/api"
-	templateapi "github.com/openshift/origin/pkg/template/api"
 )
+
+// These constants represent common annotations keys
+const (
+	// OpenShiftDisplayName is a common, optional annotation that stores the name displayed by a UI when referencing a resource.
+	OpenShiftDisplayName = "openshift.io/display-name"
+)
+
+func displayName(meta kapi.ObjectMeta) string {
+	// If an object has a display name, prefer it over the meta name.
+	displayName := meta.Annotations[OpenShiftDisplayName]
+	if len(displayName) > 0 {
+		return displayName
+	}
+	return meta.Name
+}
 
 func localOrRemoteName(meta kapi.ObjectMeta, namespace string) string {
 	if len(meta.Namespace) == 0 || namespace == meta.Namespace {
@@ -172,11 +186,18 @@ func describeBuildPipelineWithImage(out io.Writer, ref app.ComponentReference, p
 				fmt.Fprintf(out, "      * The resulting image will be pushed to %s %q\n", to.Kind, to.Name)
 			}
 		}
-		if len(trackedImage) > 0 {
-			if noSource {
-				fmt.Fprintf(out, "      * Use 'start-build --from-dir=DIR' to trigger a new build\n")
-			} else {
+
+		if noSource {
+			// if we have no source, the user must always provide the source from the local dir(binary build)
+			fmt.Fprintf(out, "      * Use 'start-build --from-dir=DIR|--from-repo=DIR|--from-file=FILE' to trigger a new build\n")
+			fmt.Fprintf(out, "      * WARNING: a binary build was created, you must specify one of --from-dir|--from-file|--from-repo when starting builds\n")
+		} else {
+			if len(trackedImage) > 0 {
+				// if we have a trackedImage/ICT and we have source, the build will be triggered automatically.
 				fmt.Fprintf(out, "      * Every time %q changes a new build will be triggered\n", trackedImage)
+			} else {
+				// if we have source (but not a tracked image), the user must manually trigger a build.
+				fmt.Fprintf(out, "      * Use 'start-build' to trigger a new build\n")
 			}
 		}
 	}
@@ -222,7 +243,7 @@ func describeBuildPipelineWithImage(out io.Writer, ref app.ComponentReference, p
 				fmt.Fprintf(out, "      You can add persistent volumes later by running 'volume dc/%s --add ...'\n", pipeline.Deployment.Name)
 			}
 			if hasRootUser(match.Image) {
-				fmt.Fprintf(out, "    * WARNING: Image %q runs as the 'root' user which may not be permitted by your cluster administrator\n", pipeline.Image.Reference.Name)
+				fmt.Fprintf(out, "    * WARNING: Image %q runs as the 'root' user which may not be permitted by your cluster administrator\n", match.Name)
 			}
 		}
 	}
@@ -241,24 +262,6 @@ func hasEmptyDir(image *imageapi.DockerImage) bool {
 		return false
 	}
 	return len(image.Config.Volumes) > 0
-}
-
-func describeGeneratedTemplate(out io.Writer, ref app.ComponentReference, result *templateapi.Template, baseNamespace string) {
-	fmt.Fprintf(out, "--> Deploying template %s for %q\n", localOrRemoteName(ref.Input().ResolvedMatch.Template.ObjectMeta, baseNamespace), ref.Input())
-	if len(result.Parameters) > 0 {
-		fmt.Fprintf(out, "     With parameters:\n")
-		for _, p := range result.Parameters {
-			name := p.DisplayName
-			if len(name) == 0 {
-				name = p.Name
-			}
-			var generated string
-			if len(p.Generate) > 0 {
-				generated = " # generated"
-			}
-			fmt.Fprintf(out, "      %s=%s%s\n", name, p.Value, generated)
-		}
-	}
 }
 
 func describeGeneratedJob(out io.Writer, ref app.ComponentReference, pod *kapi.Pod, secret *kapi.Secret, baseNamespace string) {

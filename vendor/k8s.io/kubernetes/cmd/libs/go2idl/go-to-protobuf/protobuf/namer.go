@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"k8s.io/kubernetes/cmd/libs/go2idl/generator"
+	"k8s.io/kubernetes/cmd/libs/go2idl/namer"
 	"k8s.io/kubernetes/cmd/libs/go2idl/types"
 )
 
@@ -30,7 +31,7 @@ type localNamer struct {
 }
 
 func (n localNamer) Name(t *types.Type) string {
-	if t.Kind == types.Map {
+	if t.Key != nil && t.Elem != nil {
 		return fmt.Sprintf("map<%s, %s>", n.Name(t.Key), n.Name(t.Elem))
 	}
 	if len(n.localPackage.Package) != 0 && n.localPackage.Package == t.Name.Package {
@@ -66,8 +67,10 @@ func (n *protobufNamer) List() []generator.Package {
 }
 
 func (n *protobufNamer) Add(p *protobufPackage) {
-	n.packagesByPath[p.PackagePath] = p
-	n.packages = append(n.packages, p)
+	if _, ok := n.packagesByPath[p.PackagePath]; !ok {
+		n.packagesByPath[p.PackagePath] = p
+		n.packages = append(n.packages, p)
+	}
 }
 
 func (n *protobufNamer) GoNameToProtoName(name types.Name) types.Name {
@@ -90,24 +93,6 @@ func (n *protobufNamer) GoNameToProtoName(name types.Name) types.Name {
 	return types.Name{Name: name.Name}
 }
 
-func (n *protobufNamer) protoNameForTypeName(name types.Name) string {
-	packageName := name.Package
-	if len(name.Package) != 0 {
-		if p, ok := n.packagesByPath[packageName]; ok {
-			packageName = p.Name()
-		} else {
-			packageName = protoSafePackage(packageName)
-		}
-	}
-	if len(name.Name) == 0 {
-		return packageName
-	}
-	if len(packageName) > 0 {
-		return packageName + "." + name.Name
-	}
-	return name.Name
-}
-
 func protoSafePackage(name string) string {
 	return strings.Replace(name, "/", ".", -1)
 }
@@ -116,7 +101,7 @@ type typeNameSet map[types.Name]*protobufPackage
 
 // assignGoTypeToProtoPackage looks for Go and Protobuf types that are referenced by a type in
 // a package. It will not recurse into protobuf types.
-func assignGoTypeToProtoPackage(p *protobufPackage, t *types.Type, local, global typeNameSet) {
+func assignGoTypeToProtoPackage(p *protobufPackage, t *types.Type, local, global typeNameSet, optional map[types.Name]struct{}) {
 	newT, isProto := isFundamentalProtoType(t)
 	if isProto {
 		t = newT
@@ -124,7 +109,7 @@ func assignGoTypeToProtoPackage(p *protobufPackage, t *types.Type, local, global
 	if otherP, ok := global[t.Name]; ok {
 		if _, ok := local[t.Name]; !ok {
 			p.Imports.AddType(&types.Type{
-				Kind: typesKindProtobuf,
+				Kind: types.Protobuf,
 				Name: otherP.ProtoTypeName(),
 			})
 		}
@@ -142,25 +127,32 @@ func assignGoTypeToProtoPackage(p *protobufPackage, t *types.Type, local, global
 
 	local[t.Name] = p
 	for _, m := range t.Members {
-		if isPrivateGoName(m.Name) {
+		if namer.IsPrivateGoName(m.Name) {
 			continue
 		}
 		field := &protoField{}
-		if err := protobufTagToField(reflect.StructTag(m.Tags).Get("protobuf"), field, m, t, p.ProtoTypeName()); err == nil && field.Type != nil {
-			assignGoTypeToProtoPackage(p, field.Type, local, global)
+		tag := reflect.StructTag(m.Tags).Get("protobuf")
+		if tag == "-" {
 			continue
 		}
-		assignGoTypeToProtoPackage(p, m.Type, local, global)
+		if err := protobufTagToField(tag, field, m, t, p.ProtoTypeName()); err == nil && field.Type != nil {
+			assignGoTypeToProtoPackage(p, field.Type, local, global, optional)
+			continue
+		}
+		assignGoTypeToProtoPackage(p, m.Type, local, global, optional)
 	}
 	// TODO: should methods be walked?
 	if t.Elem != nil {
-		assignGoTypeToProtoPackage(p, t.Elem, local, global)
+		assignGoTypeToProtoPackage(p, t.Elem, local, global, optional)
 	}
 	if t.Key != nil {
-		assignGoTypeToProtoPackage(p, t.Key, local, global)
+		assignGoTypeToProtoPackage(p, t.Key, local, global, optional)
 	}
 	if t.Underlying != nil {
-		assignGoTypeToProtoPackage(p, t.Underlying, local, global)
+		if t.Kind == types.Alias && isOptionalAlias(t) {
+			optional[t.Name] = struct{}{}
+		}
+		assignGoTypeToProtoPackage(p, t.Underlying, local, global, optional)
 	}
 }
 
@@ -168,19 +160,24 @@ func (n *protobufNamer) AssignTypesToPackages(c *generator.Context) error {
 	global := make(typeNameSet)
 	for _, p := range n.packages {
 		local := make(typeNameSet)
+		optional := make(map[types.Name]struct{})
 		p.Imports = NewImportTracker(p.ProtoTypeName())
 		for _, t := range c.Order {
 			if t.Name.Package != p.PackagePath {
 				continue
 			}
-			assignGoTypeToProtoPackage(p, t, local, global)
+			assignGoTypeToProtoPackage(p, t, local, global, optional)
 		}
 		p.FilterTypes = make(map[types.Name]struct{})
 		p.LocalNames = make(map[string]struct{})
+		p.OptionalTypeNames = make(map[string]struct{})
 		for k, v := range local {
 			if v == p {
 				p.FilterTypes[k] = struct{}{}
 				p.LocalNames[k.Name] = struct{}{}
+				if _, ok := optional[k]; ok {
+					p.OptionalTypeNames[k.Name] = struct{}{}
+				}
 			}
 		}
 	}

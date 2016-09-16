@@ -5,159 +5,157 @@ import (
 
 	"github.com/golang/glog"
 
+	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
+	"k8s.io/kubernetes/pkg/util/sets"
+	"k8s.io/kubernetes/pkg/util/workqueue"
+
+	"github.com/openshift/origin/pkg/client"
+	oscache "github.com/openshift/origin/pkg/client/cache"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	deployutil "github.com/openshift/origin/pkg/deploy/util"
 	imageapi "github.com/openshift/origin/pkg/image/api"
 )
 
-// ImageChangeController increments the version of a DeploymentConfig which has an image
+// ImageChangeController increments the version of a deployment config which has an image
 // change trigger when a tag update to a triggered ImageStream is detected.
 //
 // Use the ImageChangeControllerFactory to create this controller.
 type ImageChangeController struct {
-	deploymentConfigClient deploymentConfigClient
+	dn client.DeploymentConfigsNamespacer
+
+	// queue contains deployment configs that need to be synced.
+	queue workqueue.RateLimitingInterface
+
+	// streamLister provides a local cache for image streams.
+	streamLister oscache.StoreToImageStreamLister
+	// dcLister provides a local cache for deployment configs.
+	dcLister oscache.StoreToDeploymentConfigLister
+
+	// streamStoreSynced makes sure the stream store is synced before reconcling any image stream.
+	streamStoreSynced func() bool
+	// dcStoreSynced makes sure the dc store is synced before reconcling any image stream.
+	dcStoreSynced func() bool
 }
 
 // fatalError is an error which can't be retried.
 type fatalError string
 
 func (e fatalError) Error() string {
-	return fmt.Sprintf("fatal error handling ImageStream: %s", string(e))
+	return fmt.Sprintf("fatal error handling image stream: %s", string(e))
 }
 
-// Handle processes image change triggers associated with imageRepo.
-func (c *ImageChangeController) Handle(imageRepo *imageapi.ImageStream) error {
-	configs, err := c.deploymentConfigClient.listDeploymentConfigs()
+// Handle processes image change triggers associated with imagestream.
+func (c *ImageChangeController) Handle(stream *imageapi.ImageStream) error {
+	configs, err := c.dcLister.GetConfigsForImageStream(stream)
 	if err != nil {
-		return fmt.Errorf("couldn't get list of DeploymentConfig while handling ImageStream %s: %v", labelForRepo(imageRepo), err)
+		return fmt.Errorf("couldn't get list of deployment configs while handling image stream %q: %v", imageapi.LabelForStream(stream), err)
 	}
 
 	// Find any configs which should be updated based on the new image state
-	configsToUpdate := map[string]*deployapi.DeploymentConfig{}
-	for _, config := range configs {
-		glog.V(4).Infof("Detecting changed images for DeploymentConfig %s", deployutil.LabelForDeploymentConfig(config))
+	var configsToUpdate []*deployapi.DeploymentConfig
+	for n, config := range configs {
+		glog.V(4).Infof("Detecting image changes for deployment config %q", deployutil.LabelForDeploymentConfig(config))
+		hasImageChange := false
 
-		for _, trigger := range config.Spec.Triggers {
+		for j := range config.Spec.Triggers {
+			// because config can be copied during this loop, make sure we load from config for subsequent loops
+			trigger := config.Spec.Triggers[j]
 			params := trigger.ImageChangeParams
 
 			// Only automatic image change triggers should fire
-			if trigger.Type != deployapi.DeploymentTriggerOnImageChange || !params.Automatic {
+			if trigger.Type != deployapi.DeploymentTriggerOnImageChange {
 				continue
 			}
 
-			// Check if the image repo matches the trigger
-			if !triggerMatchesImage(config, params, imageRepo) {
+			// All initial deployments should have their images resolved in order to
+			// be able to work and not try to pull non-existent images from DockerHub.
+			// Deployments with automatic set to false that have been deployed at least
+			// once shouldn't have their images updated.
+			if (!params.Automatic || config.Spec.Paused) && len(params.LastTriggeredImage) > 0 {
+				continue
+			}
+
+			// Check if the image stream matches the trigger
+			if !triggerMatchesImage(config, params, stream) {
 				continue
 			}
 
 			_, tag, ok := imageapi.SplitImageStreamTag(params.From.Name)
 			if !ok {
-				return fmt.Errorf("invalid ImageStreamTag: %s", params.From.Name)
+				glog.Warningf("Invalid image stream tag %q in %q", params.From.Name, deployutil.LabelForDeploymentConfig(config))
+				continue
 			}
 
 			// Find the latest tag event for the trigger tag
-			latestEvent := imageapi.LatestTaggedImage(imageRepo, tag)
+			latestEvent := imageapi.LatestTaggedImage(stream, tag)
 			if latestEvent == nil {
-				glog.V(5).Infof("Couldn't find latest tag event for tag %s in ImageStream %s", tag, labelForRepo(imageRepo))
+				glog.V(5).Infof("Couldn't find latest tag event for tag %q in image stream %q", tag, imageapi.LabelForStream(stream))
 				continue
 			}
 
 			// Ensure a change occurred
-			if len(latestEvent.DockerImageReference) > 0 &&
-				latestEvent.DockerImageReference != params.LastTriggeredImage {
-				// Mark the config for regeneration
-				configsToUpdate[config.Name] = config
+			if len(latestEvent.DockerImageReference) == 0 || latestEvent.DockerImageReference == params.LastTriggeredImage {
+				glog.V(4).Infof("No image changes for deployment config %q were detected", deployutil.LabelForDeploymentConfig(config))
+				continue
 			}
+
+			names := sets.NewString(params.ContainerNames...)
+			for i := range config.Spec.Template.Spec.Containers {
+				container := &config.Spec.Template.Spec.Containers[i]
+				if !names.Has(container.Name) {
+					continue
+				}
+
+				if !hasImageChange {
+					// create a copy prior to mutation
+					result, err := deployutil.DeploymentConfigDeepCopy(configs[n])
+					if err != nil {
+						utilruntime.HandleError(err)
+						continue
+					}
+					configs[n] = result
+					container = &configs[n].Spec.Template.Spec.Containers[i]
+					params = configs[n].Spec.Triggers[j].ImageChangeParams
+				}
+
+				// Update the image
+				container.Image = latestEvent.DockerImageReference
+				// Log the last triggered image ID
+				params.LastTriggeredImage = latestEvent.DockerImageReference
+				hasImageChange = true
+			}
+		}
+
+		if hasImageChange {
+			configsToUpdate = append(configsToUpdate, configs[n])
 		}
 	}
 
 	// Attempt to regenerate all configs which may contain image updates
 	anyFailed := false
 	for _, config := range configsToUpdate {
-		err := c.regenerate(config)
-		if err != nil {
+		if _, err := c.dn.DeploymentConfigs(config.Namespace).Update(config); err != nil {
+			utilruntime.HandleError(err)
 			anyFailed = true
-			glog.V(2).Infof("Couldn't regenerate DeploymentConfig %s: %s", deployutil.LabelForDeploymentConfig(config), err)
-			continue
+		} else {
+			glog.V(4).Infof("Updated deployment config %q for trigger on image stream %q",
+				deployutil.LabelForDeploymentConfig(config), imageapi.LabelForStream(stream))
 		}
 	}
 
 	if anyFailed {
-		return fatalError(fmt.Sprintf("couldn't update some DeploymentConfig for trigger on ImageStream %s", labelForRepo(imageRepo)))
+		return fmt.Errorf("couldn't update some deployment configs for trigger on image stream %q", imageapi.LabelForStream(stream))
 	}
 
-	glog.V(5).Infof("Updated all DeploymentConfigs for trigger on ImageStream %s", labelForRepo(imageRepo))
 	return nil
 }
 
-// triggerMatchesImages decides whether a given trigger for config matches the provided image repo.
-// When matching:
-// - The trigger From field is preferred over the deprecated RepositoryName field.
-// - The namespace of the trigger is preferred over the config's namespace.
-func triggerMatchesImage(config *deployapi.DeploymentConfig, params *deployapi.DeploymentTriggerImageChangeParams, repo *imageapi.ImageStream) bool {
-	if len(params.From.Name) > 0 {
-		namespace := params.From.Namespace
-		if len(namespace) == 0 {
-			namespace = config.Namespace
-		}
-		name, _, ok := imageapi.SplitImageStreamTag(params.From.Name)
-		return repo.Namespace == namespace && repo.Name == name && ok
+// triggerMatchesImage decides whether a given trigger for config matches the provided image stream.
+func triggerMatchesImage(config *deployapi.DeploymentConfig, params *deployapi.DeploymentTriggerImageChangeParams, stream *imageapi.ImageStream) bool {
+	namespace := params.From.Namespace
+	if len(namespace) == 0 {
+		namespace = config.Namespace
 	}
-	return false
-}
-
-// regenerate calls the generator to get a new config. If the newly generated
-// config's version is newer, update the old config to be the new config.
-// Otherwise do nothing.
-func (c *ImageChangeController) regenerate(config *deployapi.DeploymentConfig) error {
-	// Get a regenerated config which includes the new image repo references
-	newConfig, err := c.deploymentConfigClient.generateDeploymentConfig(config.Namespace, config.Name)
-	if err != nil {
-		return fmt.Errorf("error generating new version of DeploymentConfig %s: %v", deployutil.LabelForDeploymentConfig(config), err)
-	}
-
-	// No update occurred
-	if config.Status.LatestVersion == newConfig.Status.LatestVersion {
-		glog.V(5).Infof("No version difference for generated DeploymentConfig %s", deployutil.LabelForDeploymentConfig(config))
-		return nil
-	}
-
-	// Persist the new config
-	_, err = c.deploymentConfigClient.updateDeploymentConfig(newConfig.Namespace, newConfig)
-	if err != nil {
-		return err
-	}
-
-	glog.V(4).Infof("Regenerated DeploymentConfig %s for image updates", deployutil.LabelForDeploymentConfig(config))
-	return nil
-}
-
-func labelForRepo(imageRepo *imageapi.ImageStream) string {
-	return fmt.Sprintf("%s/%s", imageRepo.Namespace, imageRepo.Name)
-}
-
-// deploymentConfigClient abstracts access to DeploymentConfigs.
-type deploymentConfigClient interface {
-	listDeploymentConfigs() ([]*deployapi.DeploymentConfig, error)
-	updateDeploymentConfig(namespace string, config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error)
-	generateDeploymentConfig(namespace, name string) (*deployapi.DeploymentConfig, error)
-}
-
-// deploymentConfigClientImpl is a pluggable deploymentConfigClient.
-type deploymentConfigClientImpl struct {
-	listDeploymentConfigsFunc    func() ([]*deployapi.DeploymentConfig, error)
-	generateDeploymentConfigFunc func(namespace, name string) (*deployapi.DeploymentConfig, error)
-	updateDeploymentConfigFunc   func(namespace string, config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error)
-}
-
-func (i *deploymentConfigClientImpl) listDeploymentConfigs() ([]*deployapi.DeploymentConfig, error) {
-	return i.listDeploymentConfigsFunc()
-}
-
-func (i *deploymentConfigClientImpl) generateDeploymentConfig(namespace, name string) (*deployapi.DeploymentConfig, error) {
-	return i.generateDeploymentConfigFunc(namespace, name)
-}
-
-func (i *deploymentConfigClientImpl) updateDeploymentConfig(namespace string, config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error) {
-	return i.updateDeploymentConfigFunc(namespace, config)
+	name, _, ok := imageapi.SplitImageStreamTag(params.From.Name)
+	return stream.Namespace == namespace && stream.Name == name && ok
 }

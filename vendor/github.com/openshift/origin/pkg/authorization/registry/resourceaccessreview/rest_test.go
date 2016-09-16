@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	kapi "k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/diff"
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
@@ -27,7 +27,7 @@ type testAuthorizer struct {
 	actualAttributes authorizer.DefaultAuthorizationAttributes
 }
 
-func (a *testAuthorizer) Authorize(ctx kapi.Context, attributes authorizer.AuthorizationAttributes) (allowed bool, reason string, err error) {
+func (a *testAuthorizer) Authorize(ctx kapi.Context, attributes authorizer.Action) (allowed bool, reason string, err error) {
 	// allow the initial check for "can I run this RAR at all"
 	if attributes.GetResource() == "localresourceaccessreviews" {
 		if len(a.deniedNamespaces) != 0 && a.deniedNamespaces.Has(kapi.NamespaceValue(ctx)) {
@@ -39,7 +39,7 @@ func (a *testAuthorizer) Authorize(ctx kapi.Context, attributes authorizer.Autho
 
 	return false, "", errors.New("unsupported")
 }
-func (a *testAuthorizer) GetAllowedSubjects(ctx kapi.Context, passedAttributes authorizer.AuthorizationAttributes) (sets.String, sets.String, error) {
+func (a *testAuthorizer) GetAllowedSubjects(ctx kapi.Context, passedAttributes authorizer.Action) (sets.String, sets.String, error) {
 	attributes, ok := passedAttributes.(authorizer.DefaultAuthorizationAttributes)
 	if !ok {
 		return nil, nil, errors.New("unexpected type for test")
@@ -61,7 +61,7 @@ func TestDeniedNamespace(t *testing.T) {
 			deniedNamespaces: sets.NewString("foo"),
 		},
 		reviewRequest: &authorizationapi.ResourceAccessReview{
-			Action: authorizationapi.AuthorizationAttributes{
+			Action: authorizationapi.Action{
 				Namespace: "foo",
 				Verb:      "get",
 				Resource:  "pods",
@@ -79,7 +79,7 @@ func TestEmptyReturn(t *testing.T) {
 			groups: sets.String{},
 		},
 		reviewRequest: &authorizationapi.ResourceAccessReview{
-			Action: authorizationapi.AuthorizationAttributes{
+			Action: authorizationapi.Action{
 				Verb:     "get",
 				Resource: "pods",
 			},
@@ -96,7 +96,7 @@ func TestNoErrors(t *testing.T) {
 			groups: sets.NewString("three", "four"),
 		},
 		reviewRequest: &authorizationapi.ResourceAccessReview{
-			Action: authorizationapi.AuthorizationAttributes{
+			Action: authorizationapi.Action{
 				Verb:     "delete",
 				Resource: "deploymentConfig",
 			},
@@ -136,7 +136,7 @@ func (r *resourceAccessTest) runTest(t *testing.T) {
 	switch obj.(type) {
 	case *authorizationapi.ResourceAccessReviewResponse:
 		if !reflect.DeepEqual(expectedResponse, obj) {
-			t.Errorf("diff %v", util.ObjectGoPrintDiff(expectedResponse, obj))
+			t.Errorf("diff %v", diff.ObjectGoPrintDiff(expectedResponse, obj))
 		}
 	case nil:
 		if len(r.authorizer.err) == 0 {
@@ -147,6 +147,6 @@ func (r *resourceAccessTest) runTest(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(expectedAttributes, r.authorizer.actualAttributes) {
-		t.Errorf("diff %v", util.ObjectGoPrintDiff(expectedAttributes, r.authorizer.actualAttributes))
+		t.Errorf("diff %v", diff.ObjectGoPrintDiff(expectedAttributes, r.authorizer.actualAttributes))
 	}
 }

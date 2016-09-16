@@ -5,17 +5,20 @@ description = "The save command description and usage"
 keywords = ["tarred, repository, backup"]
 [menu.main]
 parent = "smn_cli"
-weight=1
 +++
 <![end-metadata]-->
 
 # save
 
-    Usage: docker save [OPTIONS] IMAGE [IMAGE...]
+```markdown
+Usage:  docker save [OPTIONS] IMAGE [IMAGE...]
 
-    Save an image(s) to a tar archive (streamed to STDOUT by default)
+Save one or more images to a tar archive (streamed to STDOUT by default)
 
-      -o, --output=""    Write to a file, instead of STDOUT
+Options:
+      --help            Print usage
+  -o, --output string   Write to a file, instead of STDOUT
+```
 
 Produces a tarred repository to the standard output stream.
 Contains all parent layers, and all tags + versions, or specified `repo:tag`, for

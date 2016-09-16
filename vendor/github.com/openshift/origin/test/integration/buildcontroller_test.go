@@ -1,5 +1,3 @@
-// +build integration
-
 package integration
 
 import (
@@ -14,7 +12,6 @@ import (
 	watchapi "k8s.io/kubernetes/pkg/watch"
 
 	buildapi "github.com/openshift/origin/pkg/build/api"
-	buildutil "github.com/openshift/origin/pkg/build/util"
 	"github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
 	"github.com/openshift/origin/pkg/cmd/server/origin"
@@ -36,7 +33,7 @@ var (
 
 	// BuildControllersWatchTimeout is used by all tests to wait for watch events. In case where only
 	// a single watch event is expected, the test will fail after the timeout.
-	BuildControllersWatchTimeout = 10 * time.Second
+	BuildControllersWatchTimeout = 60 * time.Second
 )
 
 type controllerCount struct {
@@ -51,24 +48,28 @@ func mockBuild() *buildapi.Build {
 		ObjectMeta: kapi.ObjectMeta{
 			GenerateName: "mock-build",
 			Labels: map[string]string{
-				"label1": "value1",
-				"label2": "value2",
+				"label1":                     "value1",
+				"label2":                     "value2",
+				buildapi.BuildConfigLabel:    "mock-build-config",
+				buildapi.BuildRunPolicyLabel: string(buildapi.BuildRunPolicyParallel),
 			},
 		},
 		Spec: buildapi.BuildSpec{
-			Source: buildapi.BuildSource{
-				Git: &buildapi.GitBuildSource{
-					URI: "http://my.docker/build",
+			CommonSpec: buildapi.CommonSpec{
+				Source: buildapi.BuildSource{
+					Git: &buildapi.GitBuildSource{
+						URI: "http://my.docker/build",
+					},
+					ContextDir: "context",
 				},
-				ContextDir: "context",
-			},
-			Strategy: buildapi.BuildStrategy{
-				DockerStrategy: &buildapi.DockerBuildStrategy{},
-			},
-			Output: buildapi.BuildOutput{
-				To: &kapi.ObjectReference{
-					Kind: "DockerImage",
-					Name: "namespace/builtimage",
+				Strategy: buildapi.BuildStrategy{
+					DockerStrategy: &buildapi.DockerBuildStrategy{},
+				},
+				Output: buildapi.BuildOutput{
+					To: &kapi.ObjectReference{
+						Kind: "DockerImage",
+						Name: "namespace/builtimage",
+					},
 				},
 			},
 		},
@@ -78,6 +79,7 @@ func mockBuild() *buildapi.Build {
 // TestConcurrentBuildControllers tests the transition of a build from new to pending. Ensures that only a single New -> Pending
 // transition happens and that only a single pod is created during a set period of time.
 func TestConcurrentBuildControllers(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	// Start a master with multiple BuildControllers
 	osClient, kClient := setupBuildControllerTest(controllerCount{BuildControllers: 5}, t)
 
@@ -87,11 +89,15 @@ func TestConcurrentBuildControllers(t *testing.T) {
 	// Create a build
 	ns := testutil.Namespace()
 	b, err := osClient.Builds(ns).Create(mockBuild())
-	checkErr(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Start watching builds for New -> Pending transition
 	buildWatch, err := osClient.Builds(ns).Watch(kapi.ListOptions{FieldSelector: fields.OneTermEqualSelector("metadata.name", b.Name), ResourceVersion: b.ResourceVersion})
-	checkErr(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer buildWatch.Stop()
 	buildModifiedCount := int32(0)
 	go func() {
@@ -114,8 +120,10 @@ func TestConcurrentBuildControllers(t *testing.T) {
 	}()
 
 	// Watch build pods as they are created
-	podWatch, err := kClient.Pods(ns).Watch(kapi.ListOptions{FieldSelector: fields.OneTermEqualSelector("metadata.name", buildutil.GetBuildPodName(b))})
-	checkErr(t, err)
+	podWatch, err := kClient.Pods(ns).Watch(kapi.ListOptions{FieldSelector: fields.OneTermEqualSelector("metadata.name", buildapi.GetBuildPodName(b))})
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer podWatch.Stop()
 	podAddedCount := int32(0)
 	go func() {
@@ -152,6 +160,7 @@ type buildControllerPodTest struct {
 
 // TestConcurrentBuildPodControllers tests the lifecycle of a build pod when running multiple controllers.
 func TestConcurrentBuildPodControllers(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	// Start a master with multiple BuildPodControllers
 	osClient, kClient := setupBuildControllerTest(controllerCount{BuildPodControllers: 5}, t)
 
@@ -203,16 +212,20 @@ func TestConcurrentBuildPodControllers(t *testing.T) {
 
 		// Create a build
 		b, err := osClient.Builds(ns).Create(mockBuild())
-		checkErr(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		// Watch build pod for transition to pending
-		podWatch, err := kClient.Pods(ns).Watch(kapi.ListOptions{FieldSelector: fields.OneTermEqualSelector("metadata.name", buildutil.GetBuildPodName(b))})
-		checkErr(t, err)
+		podWatch, err := kClient.Pods(ns).Watch(kapi.ListOptions{FieldSelector: fields.OneTermEqualSelector("metadata.name", buildapi.GetBuildPodName(b))})
+		if err != nil {
+			t.Fatal(err)
+		}
 		go func() {
 			for e := range podWatch.ResultChan() {
 				pod, ok := e.Object.(*kapi.Pod)
 				if !ok {
-					checkErr(t, fmt.Errorf("%s: unexpected object received: %#v\n", test.Name, e.Object))
+					t.Fatalf("%s: unexpected object received: %#v\n", test.Name, e.Object)
 				}
 				if pod.Status.Phase == kapi.PodPending {
 					podReadyChan <- pod
@@ -238,15 +251,26 @@ func TestConcurrentBuildPodControllers(t *testing.T) {
 		podWatch.Stop()
 
 		for _, state := range test.States {
-			// Update pod state and verify that corresponding build state happens accordingly
-			pod, err := kClient.Pods(ns).Get(pod.Name)
-			checkErr(t, err)
-			pod.Status.Phase = state.PodPhase
-			_, err = kClient.Pods(ns).UpdateStatus(pod)
-			checkErr(t, err)
+			if err := kclient.RetryOnConflict(kclient.DefaultRetry, func() error {
+				// Update pod state and verify that corresponding build state happens accordingly
+				pod, err := kClient.Pods(ns).Get(pod.Name)
+				if err != nil {
+					return err
+				}
+				if pod.Status.Phase == state.PodPhase {
+					return fmt.Errorf("another client altered the pod phase to %s: %#v", state.PodPhase, pod)
+				}
+				pod.Status.Phase = state.PodPhase
+				_, err = kClient.Pods(ns).UpdateStatus(pod)
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
 
 			buildWatch, err := osClient.Builds(ns).Watch(kapi.ListOptions{FieldSelector: fields.OneTermEqualSelector("metadata.name", b.Name), ResourceVersion: b.ResourceVersion})
-			checkErr(t, err)
+			if err != nil {
+				t.Fatal(err)
+			}
 			defer buildWatch.Stop()
 			go func() {
 				done := false
@@ -285,6 +309,7 @@ func TestConcurrentBuildPodControllers(t *testing.T) {
 }
 
 func TestConcurrentBuildImageChangeTriggerControllers(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	// Start a master with multiple ImageChangeTrigger controllers
 	osClient, _ := setupBuildControllerTest(controllerCount{ImageChangeControllers: 5}, t)
 	tag := "latest"
@@ -298,59 +323,67 @@ func TestConcurrentBuildImageChangeTriggerControllers(t *testing.T) {
 }
 
 func TestBuildDeleteController(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	osClient, kClient := setupBuildControllerTest(controllerCount{}, t)
 	runBuildDeleteTest(t, osClient, kClient)
 }
 
 func TestBuildRunningPodDeleteController(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	osClient, kClient := setupBuildControllerTest(controllerCount{}, t)
 	runBuildRunningPodDeleteTest(t, osClient, kClient)
 }
 
 func TestBuildCompletePodDeleteController(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	osClient, kClient := setupBuildControllerTest(controllerCount{}, t)
 	runBuildCompletePodDeleteTest(t, osClient, kClient)
 }
 
 func TestConcurrentBuildConfigControllers(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	osClient, kClient := setupBuildControllerTest(controllerCount{ConfigChangeControllers: 5}, t)
 	runBuildConfigChangeControllerTest(t, osClient, kClient)
-}
-
-func checkErr(t *testing.T, err error) {
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
 }
 
 func setupBuildControllerTest(counts controllerCount, t *testing.T) (*client.Client, *kclient.Client) {
 	testutil.RequireEtcd(t)
 	master, clusterAdminKubeConfig, err := testserver.StartTestMaster()
-	checkErr(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	clusterAdminClient, err := testutil.GetClusterAdminClient(clusterAdminKubeConfig)
-	checkErr(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	clusterAdminKubeClient, err := testutil.GetClusterAdminKubeClient(clusterAdminKubeConfig)
-	checkErr(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = clusterAdminKubeClient.Namespaces().Create(&kapi.Namespace{
 		ObjectMeta: kapi.ObjectMeta{Name: testutil.Namespace()},
 	})
-	checkErr(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := testserver.WaitForServiceAccounts(clusterAdminKubeClient, testutil.Namespace(), []string{bootstrappolicy.BuilderServiceAccountName, bootstrappolicy.DefaultServiceAccountName}); err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	openshiftConfig, err := origin.BuildMasterConfig(*master)
-	checkErr(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Get the build controller clients, since those rely on service account tokens
 	// We don't want to proceed with the rest of the test until those are available
 	openshiftConfig.BuildControllerClients()
 
 	for i := 0; i < counts.BuildControllers; i++ {
-		openshiftConfig.RunBuildController()
+		openshiftConfig.RunBuildController(openshiftConfig.Informers)
 	}
 	for i := 0; i < counts.BuildPodControllers; i++ {
 		openshiftConfig.RunBuildPodController()
@@ -595,7 +628,7 @@ func runBuildDeleteTest(t *testing.T, clusterAdminClient *client.Client, cluster
 		t.Fatalf("expected watch event type %s, got %s", e, a)
 	}
 	pod := event.Object.(*kapi.Pod)
-	if expected := buildutil.GetBuildPodName(newBuild); pod.Name != expected {
+	if expected := buildapi.GetBuildPodName(newBuild); pod.Name != expected {
 		t.Fatalf("Expected pod %s to be deleted, but pod %s was deleted", expected, pod.Name)
 	}
 
@@ -677,7 +710,7 @@ func runBuildRunningPodDeleteTest(t *testing.T, clusterAdminClient *client.Clien
 		t.Fatalf("expected build status to be marked pending, but was marked %s", newBuild.Status.Phase)
 	}
 
-	clusterAdminKubeClient.Pods(testutil.Namespace()).Delete(buildutil.GetBuildPodName(newBuild), kapi.NewDeleteOptions(0))
+	clusterAdminKubeClient.Pods(testutil.Namespace()).Delete(buildapi.GetBuildPodName(newBuild), kapi.NewDeleteOptions(0))
 	event = waitForWatch(t, "build updated to error", buildWatch)
 	if e, a := watchapi.Modified, event.Type; e != a {
 		t.Fatalf("expected watch event type %s, got %s", e, a)
@@ -741,7 +774,7 @@ func runBuildCompletePodDeleteTest(t *testing.T, clusterAdminClient *client.Clie
 		t.Fatalf("expected build status to be marked complete, but was marked %s", newBuild.Status.Phase)
 	}
 
-	clusterAdminKubeClient.Pods(testutil.Namespace()).Delete(buildutil.GetBuildPodName(newBuild), kapi.NewDeleteOptions(0))
+	clusterAdminKubeClient.Pods(testutil.Namespace()).Delete(buildapi.GetBuildPodName(newBuild), kapi.NewDeleteOptions(0))
 	time.Sleep(10 * time.Second)
 	newBuild, err = clusterAdminClient.Builds(testutil.Namespace()).Get(newBuild.Name)
 	if err != nil {
@@ -790,9 +823,9 @@ func configChangeBuildConfig() *buildapi.BuildConfig {
 	bc := &buildapi.BuildConfig{}
 	bc.Name = "testcfgbc"
 	bc.Namespace = testutil.Namespace()
-	bc.Spec.BuildSpec.Source.Git = &buildapi.GitBuildSource{}
-	bc.Spec.BuildSpec.Source.Git.URI = "git://github.com/openshift/ruby-hello-world.git"
-	bc.Spec.BuildSpec.Strategy.DockerStrategy = &buildapi.DockerBuildStrategy{}
+	bc.Spec.Source.Git = &buildapi.GitBuildSource{}
+	bc.Spec.Source.Git.URI = "git://github.com/openshift/ruby-hello-world.git"
+	bc.Spec.Strategy.DockerStrategy = &buildapi.DockerBuildStrategy{}
 	configChangeTrigger := buildapi.BuildTriggerPolicy{Type: buildapi.ConfigChangeBuildTriggerType}
 	bc.Spec.Triggers = append(bc.Spec.Triggers, configChangeTrigger)
 	return bc

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"reflect"
@@ -28,7 +29,6 @@ import (
 	"github.com/openshift/origin/pkg/generate/dockerfile"
 	"github.com/openshift/origin/pkg/generate/source"
 	imageapi "github.com/openshift/origin/pkg/image/api"
-	"github.com/openshift/origin/pkg/template"
 	outil "github.com/openshift/origin/pkg/util"
 )
 
@@ -243,9 +243,36 @@ func (c *AppConfig) AddArguments(args []string) []string {
 	return unknown
 }
 
+// validateBuilders confirms that all images associated with components that are to be built,
+// are builders (or we're using a docker strategy).
+func (c *AppConfig) validateBuilders(components app.ComponentReferences) error {
+	if len(c.Strategy) != 0 {
+		return nil
+	}
+	errs := []error{}
+	for _, ref := range components {
+		input := ref.Input()
+		// if we're supposed to build this thing, and the image/imagestream we've matched it to did not come from an explicit CLI argument,
+		// and the image/imagestream we matched to is not explicitly an s2i builder, and we're not doing a docker-type build, warn the user
+		// that this probably won't work and force them to declare their intention explicitly.
+		if input.ExpectToBuild && input.ResolvedMatch != nil && !app.IsBuilderMatch(input.ResolvedMatch) && input.Uses != nil && !input.Uses.IsDockerBuild() {
+			errs = append(errs, fmt.Errorf("the image match %q for source repository %q does not appear to be a source-to-image builder.\n\n- to attempt to use this image as a source builder, pass \"--strategy=source\"\n- to use it as a base image for a Docker build, pass \"--strategy=docker\"", input.ResolvedMatch.Name, input.Uses))
+			continue
+		}
+	}
+	return errors.NewAggregate(errs)
+}
+
 func validateEnforcedName(name string) error {
-	if ok, _ := validation.ValidateServiceName(name, false); !ok {
+	if reasons := validation.ValidateServiceName(name, false); len(reasons) != 0 && !app.IsParameterizableValue(name) {
 		return fmt.Errorf("invalid name: %s. Must be an a lower case alphanumeric (a-z, and 0-9) string with a maximum length of 24 characters, where the first character is a letter (a-z), and the '-' character is allowed anywhere except the first or last character.", name)
+	}
+	return nil
+}
+
+func validateStrategyName(name string) error {
+	if name != "docker" && name != "source" {
+		return fmt.Errorf("invalid strategy: %s. Must be 'docker' or 'source'.", name)
 	}
 	return nil
 }
@@ -267,23 +294,47 @@ func (c *AppConfig) buildPipelines(components app.ComponentReferences, environme
 		for _, ref := range group {
 			refInput := ref.Input()
 			from := refInput.String()
-			var (
-				pipeline *app.Pipeline
-				err      error
-			)
+			var pipeline *app.Pipeline
+
 			switch {
 			case refInput.ExpectToBuild:
 				glog.V(4).Infof("will add %q secrets into a build for a source build of %q", strings.Join(c.Secrets, ","), refInput.Uses)
 				if err := refInput.Uses.AddBuildSecrets(c.Secrets, refInput.Uses.IsDockerBuild()); err != nil {
 					return nil, fmt.Errorf("unable to add build secrets %q: %v", strings.Join(c.Secrets, ","), err)
 				}
+
+				var (
+					image *app.ImageRef
+					err   error
+				)
+				if refInput.ResolvedMatch != nil {
+					inputImage, err := app.InputImageFromMatch(refInput.ResolvedMatch)
+					if err != nil {
+						return nil, fmt.Errorf("can't build %q: %v", from, err)
+					}
+					if !inputImage.AsImageStream && from != "scratch" {
+						msg := "Could not find an image stream match for %q. Make sure that a Docker image with that tag is available on the node for the build to succeed."
+						glog.Warningf(msg, from)
+					}
+					image = inputImage
+				}
+
 				glog.V(4).Infof("will use %q as the base image for a source build of %q", ref, refInput.Uses)
-				if pipeline, err = pipelineBuilder.NewBuildPipeline(from, refInput.ResolvedMatch, refInput.Uses); err != nil {
+				if pipeline, err = pipelineBuilder.NewBuildPipeline(from, image, refInput.Uses); err != nil {
 					return nil, fmt.Errorf("can't build %q: %v", refInput.Uses, err)
 				}
 			default:
+				inputImage, err := app.InputImageFromMatch(refInput.ResolvedMatch)
+				if err != nil {
+					return nil, fmt.Errorf("can't include %q: %v", from, err)
+				}
+				if !inputImage.AsImageStream {
+					msg := "Could not find an image stream match for %q. Make sure that a Docker image with that tag is available on the node for the deployment to succeed."
+					glog.Warningf(msg, from)
+				}
+
 				glog.V(4).Infof("will include %q", ref)
-				if pipeline, err = pipelineBuilder.NewImagePipeline(from, refInput.ResolvedMatch); err != nil {
+				if pipeline, err = pipelineBuilder.NewImagePipeline(from, inputImage); err != nil {
 					return nil, fmt.Errorf("can't include %q: %v", refInput, err)
 				}
 			}
@@ -307,38 +358,25 @@ func (c *AppConfig) buildPipelines(components app.ComponentReferences, environme
 }
 
 // buildTemplates converts a set of resolved, valid references into references to template objects.
-func (c *AppConfig) buildTemplates(components app.ComponentReferences, environment app.Environment) ([]runtime.Object, error) {
+func (c *AppConfig) buildTemplates(components app.ComponentReferences, environment app.Environment) (string, []runtime.Object, error) {
 	objects := []runtime.Object{}
-
+	name := ""
 	for _, ref := range components {
 		tpl := ref.Input().ResolvedMatch.Template
 
 		glog.V(4).Infof("processing template %s/%s", c.OriginNamespace, tpl.Name)
-		for _, env := range environment.List() {
-			// only set environment values that match what's expected by the template.
-			if v := template.GetParameterByName(tpl, env.Name); v != nil {
-				v.Value = env.Value
-				v.Generate = ""
-				template.AddParameter(tpl, *v)
-			} else {
-				return nil, fmt.Errorf("unexpected parameter name %q", env.Name)
-			}
-		}
-
-		result, err := c.OSClient.TemplateConfigs(c.OriginNamespace).Create(tpl)
+		result, err := TransformTemplate(tpl, c.OSClient, c.OriginNamespace, environment)
 		if err != nil {
-			return nil, fmt.Errorf("error processing template %s/%s: %v", c.OriginNamespace, tpl.Name, err)
+			return name, nil, err
 		}
-		errs := runtime.DecodeList(result.Objects, kapi.Codecs.UniversalDecoder())
-		if len(errs) > 0 {
-			err = errors.NewAggregate(errs)
-			return nil, fmt.Errorf("error processing template %s/%s: %v", c.OriginNamespace, tpl.Name, errs)
+		if len(name) == 0 {
+			name = tpl.Name
 		}
 		objects = append(objects, result.Objects...)
 
-		describeGeneratedTemplate(c.Out, ref, result, c.OriginNamespace)
+		DescribeGeneratedTemplate(c.Out, ref.Input().String(), result, c.OriginNamespace)
 	}
-	return objects, nil
+	return name, objects, nil
 }
 
 // fakeSecretAccessor is used during dry runs of installation
@@ -556,12 +594,22 @@ func (c *AppConfig) Run() (*AppResult, error) {
 	repositories := resolved.Repositories
 	components := resolved.Components
 
+	if err := c.validateBuilders(components); err != nil {
+		return nil, err
+	}
+
 	if len(repositories) == 0 && len(components) == 0 {
 		return nil, ErrNoInputs
 	}
 
 	if len(c.Name) > 0 {
 		if err := validateEnforcedName(c.Name); err != nil {
+			return nil, err
+		}
+	}
+
+	if len(c.Strategy) > 0 {
+		if err := validateStrategyName(c.Strategy); err != nil {
 			return nil, err
 		}
 	}
@@ -617,13 +665,16 @@ func (c *AppConfig) Run() (*AppResult, error) {
 
 	objects = app.AddServices(objects, false)
 
-	templateObjects, err := c.buildTemplates(components.TemplateComponentRefs(), app.Environment(parameters))
+	templateName, templateObjects, err := c.buildTemplates(components.TemplateComponentRefs(), app.Environment(parameters))
 	if err != nil {
 		return nil, err
 	}
 	objects = append(objects, templateObjects...)
 
 	name = c.Name
+	if len(name) == 0 {
+		name = templateName
+	}
 	if len(name) == 0 {
 		for _, pipeline := range pipelines {
 			if pipeline.Deployment != nil {
@@ -666,20 +717,151 @@ func (c *AppConfig) Run() (*AppResult, error) {
 	}, nil
 }
 
+// followRefToDockerImage follows a buildconfig...To/From reference until it
+// terminates in docker image information. This can include dereferencing chains
+// of ImageStreamTag references that already exist or which are being created.
+// ref is the reference to To/From to follow. If ref is an ImageStreamTag
+// that is following another ImageStreamTag, isContext should be set to the
+// parent IS. Finally, objects is the list of objects that new-app is creating
+// to support the buildconfig. It returns a reference to a terminal DockerImage
+// or nil if one could not be determined (a valid, non-error outcome). err
+// is only used to indicate that the follow encountered a severe error
+// (e.g malformed data).
+func (c *AppConfig) followRefToDockerImage(ref *kapi.ObjectReference, isContext *imageapi.ImageStream, objects app.Objects) (*kapi.ObjectReference, error) {
+
+	if ref == nil {
+		return nil, fmt.Errorf("Unable to follow nil")
+	}
+
+	if ref.Kind == "DockerImage" {
+		// Make a shallow copy so we don't modify the ObjectReference properties that
+		// new-app/build created.
+		copy := *ref
+		// Namespace should not matter here. The DockerImage URL will include project
+		// information if it is relevant.
+		copy.Namespace = ""
+
+		// DockerImage names may or may not have a tag suffix. Add :latest if there
+		// is no tag so that string comparison will behave as expected.
+		if !strings.Contains(copy.Name, ":") {
+			copy.Name += ":" + imageapi.DefaultImageTag
+		}
+		return &copy, nil
+	}
+
+	if ref.Kind != "ImageStreamTag" {
+		return nil, fmt.Errorf("Unable to follow reference type: %q", ref.Kind)
+	}
+
+	isNS := ref.Namespace
+	if len(isNS) == 0 {
+		isNS = c.OriginNamespace
+	}
+
+	// Otherwise, we are tracing an IST reference
+	isName, isTag, ok := imageapi.SplitImageStreamTag(ref.Name)
+	if !ok {
+		if isContext == nil {
+			return nil, fmt.Errorf("Unable to parse ImageStreamTag reference: %q", ref.Name)
+		}
+		// Otherwise, we are following a tag that references another tag in the same ImageStream.
+		isName = isContext.Name
+		isTag = ref.Name
+	} else {
+		// The imagestream is usually being created alongside the buildconfig
+		// when new-build is being used, so scan objects being created for it.
+		for _, check := range objects {
+			if is2, ok := check.(*imageapi.ImageStream); ok {
+				if is2.Name == isName {
+					isContext = is2
+					break
+				}
+			}
+		}
+
+		if isContext == nil {
+			var err error
+			isContext, err = c.OSClient.ImageStreams(isNS).Get(isName)
+			if err != nil {
+				return nil, fmt.Errorf("Unable to check for circular build input/outputs: %v", err)
+			}
+		}
+	}
+
+	// Dereference ImageStreamTag to see what it is pointing to
+	target := isContext.Spec.Tags[isTag].From
+
+	if target == nil {
+		if isContext.Spec.DockerImageRepository == "" {
+			// Otherwise, this appears to be a new IS, created by new-app, with very little information
+			// populated. We cannot resolve a DockerImage.
+			return nil, nil
+		}
+		// Legacy InputStream without tag support? Spoof what we need.
+		imageName := isContext.Spec.DockerImageRepository + ":" + isTag
+		return &kapi.ObjectReference{
+			Kind: "DockerImage",
+			Name: imageName,
+		}, nil
+	}
+
+	return c.followRefToDockerImage(target, isContext, objects)
+}
+
 // checkCircularReferences ensures there are no builds that can trigger themselves
 // due to an imagechangetrigger that matches the output destination of the image.
 // objects is a list of api objects produced by new-app.
 func (c *AppConfig) checkCircularReferences(objects app.Objects) error {
-	for _, obj := range objects {
+	for i, obj := range objects {
+
+		if glog.V(5) {
+			json, _ := json.MarshalIndent(obj, "", "\t")
+			glog.Infof("\n\nCycle check input object %v:\n%v\n", i, string(json))
+		}
+
 		if bc, ok := obj.(*buildapi.BuildConfig); ok {
 			input := buildutil.GetInputReference(bc.Spec.Strategy)
-			if bc.Spec.Output.To != nil && input != nil &&
-				reflect.DeepEqual(input, bc.Spec.Output.To) {
-				ns := input.Namespace
-				if len(ns) == 0 {
-					ns = c.OriginNamespace
+			output := bc.Spec.Output.To
+
+			if output == nil || input == nil {
+				return nil
+			}
+
+			dockerInput, err := c.followRefToDockerImage(input, nil, objects)
+			if err != nil {
+				glog.Warningf("Unable to check for circular build input: %v", err)
+				return nil
+			}
+			glog.V(5).Infof("Post follow input:\n%#v\n", dockerInput)
+
+			dockerOutput, err := c.followRefToDockerImage(output, nil, objects)
+			if err != nil {
+				glog.Warningf("Unable to check for circular build output: %v", err)
+				return nil
+			}
+			glog.V(5).Infof("Post follow:\n%#v\n", dockerOutput)
+
+			if dockerInput != nil && dockerOutput != nil {
+				if reflect.DeepEqual(dockerInput, dockerOutput) {
+					return app.CircularOutputReferenceError{Reference: fmt.Sprintf("%s", dockerInput.Name)}
 				}
-				return app.CircularOutputReferenceError{Reference: fmt.Sprintf("%s/%s", ns, input.Name)}
+			}
+
+			// If it is not possible to follow input and output out to DockerImages,
+			// it is likely they are referencing newly created ImageStreams. Just
+			// make sure they are not the same image stream.
+			inCopy := *input
+			outCopy := *output
+			for _, ref := range []*kapi.ObjectReference{&inCopy, &outCopy} {
+				// Some code paths add namespace and others don't. Make things
+				// consistent.
+				if len(ref.Namespace) == 0 {
+					ref.Namespace = c.OriginNamespace
+				}
+			}
+
+			if reflect.DeepEqual(inCopy, outCopy) {
+				return app.CircularOutputReferenceError{Reference: fmt.Sprintf("%s/%s", inCopy.Namespace, inCopy.Name)}
 			}
 		}
 	}

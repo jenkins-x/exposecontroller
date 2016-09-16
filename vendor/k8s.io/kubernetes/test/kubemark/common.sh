@@ -16,7 +16,7 @@
 
 source "${KUBE_ROOT}/cluster/kubemark/config-default.sh"
 source "${KUBE_ROOT}/cluster/kubemark/util.sh"
-source "${KUBE_ROOT}/cluster/kube-env.sh"
+source "${KUBE_ROOT}/cluster/lib/util.sh"
 
 detect-project &> /dev/null
 export PROJECT
@@ -26,6 +26,10 @@ MASTER_TAG="kubemark-master"
 EVENT_STORE_NAME="${INSTANCE_PREFIX}-event-store"
 
 RETRIES=3
+
+export KUBECTL="${KUBE_ROOT}/cluster/kubectl.sh"
+export KUBEMARK_DIRECTORY="${KUBE_ROOT}/test/kubemark"
+export RESOURCE_DIRECTORY="${KUBEMARK_DIRECTORY}/resources"
 
 # Runs gcloud compute command with the given parameters. Up to $RETRIES will be made
 # to execute the command.

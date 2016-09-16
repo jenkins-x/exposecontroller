@@ -1,5 +1,3 @@
-// +build integration
-
 package integration
 
 import (
@@ -16,7 +14,6 @@ import (
 	overridesapi "github.com/openshift/origin/pkg/build/admission/overrides/api"
 	buildtestutil "github.com/openshift/origin/pkg/build/admission/testutil"
 	buildapi "github.com/openshift/origin/pkg/build/api"
-	buildutil "github.com/openshift/origin/pkg/build/util"
 	"github.com/openshift/origin/pkg/client"
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
@@ -27,6 +24,7 @@ import (
 var buildPodAdmissionTestTimeout time.Duration = 10 * time.Second
 
 func TestBuildDefaultGitHTTPProxy(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	httpProxy := "http://my.test.proxy:12345"
 	oclient, kclient := setupBuildDefaultsAdmissionTest(t, &defaultsapi.BuildDefaultsConfig{
 		GitHTTPProxy: httpProxy,
@@ -38,6 +36,7 @@ func TestBuildDefaultGitHTTPProxy(t *testing.T) {
 }
 
 func TestBuildDefaultGitHTTPSProxy(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	httpsProxy := "https://my.test.proxy:12345"
 	oclient, kclient := setupBuildDefaultsAdmissionTest(t, &defaultsapi.BuildDefaultsConfig{
 		GitHTTPSProxy: httpsProxy,
@@ -49,6 +48,7 @@ func TestBuildDefaultGitHTTPSProxy(t *testing.T) {
 }
 
 func TestBuildDefaultEnvironment(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	env := []kapi.EnvVar{
 		{
 			Name:  "VAR1",
@@ -69,6 +69,7 @@ func TestBuildDefaultEnvironment(t *testing.T) {
 }
 
 func TestBuildOverrideForcePull(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	oclient, kclient := setupBuildOverridesAdmissionTest(t, &overridesapi.BuildOverridesConfig{
 		ForcePull: true,
 	})
@@ -79,6 +80,7 @@ func TestBuildOverrideForcePull(t *testing.T) {
 }
 
 func TestBuildOverrideForcePullCustomStrategy(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	oclient, kclient := setupBuildOverridesAdmissionTest(t, &overridesapi.BuildOverridesConfig{
 		ForcePull: true,
 	})
@@ -92,7 +94,12 @@ func TestBuildOverrideForcePullCustomStrategy(t *testing.T) {
 }
 
 func buildPodAdmissionTestCustomBuild() *buildapi.Build {
-	build := &buildapi.Build{}
+	build := &buildapi.Build{ObjectMeta: kapi.ObjectMeta{
+		Labels: map[string]string{
+			buildapi.BuildConfigLabel:    "mock-build-config",
+			buildapi.BuildRunPolicyLabel: string(buildapi.BuildRunPolicyParallel),
+		},
+	}}
 	build.Name = "test-custom-build"
 	build.Spec.Source.Git = &buildapi.GitBuildSource{URI: "http://test/src"}
 	build.Spec.Strategy.CustomStrategy = &buildapi.CustomBuildStrategy{}
@@ -102,7 +109,12 @@ func buildPodAdmissionTestCustomBuild() *buildapi.Build {
 }
 
 func buildPodAdmissionTestDockerBuild() *buildapi.Build {
-	build := &buildapi.Build{}
+	build := &buildapi.Build{ObjectMeta: kapi.ObjectMeta{
+		Labels: map[string]string{
+			buildapi.BuildConfigLabel:    "mock-build-config",
+			buildapi.BuildRunPolicyLabel: string(buildapi.BuildRunPolicyParallel),
+		},
+	}}
 	build.Name = "test-build"
 	build.Spec.Source.Git = &buildapi.GitBuildSource{URI: "http://test/src"}
 	build.Spec.Strategy.DockerStrategy = &buildapi.DockerBuildStrategy{}
@@ -120,7 +132,7 @@ func runBuildPodAdmissionTest(t *testing.T, client *client.Client, kclient *kcli
 	watchOpt := kapi.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector(
 			"metadata.name",
-			buildutil.GetBuildPodName(build),
+			buildapi.GetBuildPodName(build),
 		),
 	}
 	podWatch, err := kclient.Pods(ns).Watch(watchOpt)

@@ -2,8 +2,6 @@ package ipfailover
 
 import (
 	"testing"
-
-	deployapi "github.com/openshift/origin/pkg/deploy/api"
 )
 
 func TestValidateIPAddress(t *testing.T) {
@@ -19,7 +17,7 @@ func TestValidateIPAddress(t *testing.T) {
 
 	invalidIPs := []string{"1.1.1.256", "256.256.256.256",
 		"1024.512.256.128", "a.b.c.d", "1.2.3.4.abc", "5.6.7.8def",
-		"a.12.13.14", "9999.888.77.6",
+		"a.12.13.14", "9999.888.77.6", "1.2.3",
 	}
 
 	for _, ip := range invalidIPs {
@@ -44,7 +42,7 @@ func TestValidateIPAddressRange(t *testing.T) {
 	invalidRanges := []string{"1.1.1.256-250", "1.1.1.1-0",
 		"1.1.1.5-1", "255.255.255.255-259", "1024.512.256.128-255",
 		"a.b.c.d-e", "1.2.3.4.abc-def", "5.6.7.8def-1.2.3.4abc",
-		"a.12.13.14-55", "9999.888.77.6-66",
+		"a.12.13.14-55", "9999.888.77.6-66", "1.2.3.4-5-6", "1.2.3-4",
 	}
 
 	for _, iprange := range invalidRanges {
@@ -74,70 +72,12 @@ func TestValidateVirtualIPs(t *testing.T) {
 		"1.2.3.4-5,1024.512.256.128-255", "1.1.1.1,a.b.c.d-e",
 		"a.b.c.d-e,5.4.3.2", "1.2.3.4.abc-def",
 		"5.6.7.8def-1.2.3.4abc", "4.1.1.1,a.12.13.14-55",
-		"8.8.8.8,9999.888.77.6-66,4.4.4.4-8",
+		"8.8.8.8,9999.888.77.6-66,4.4.4.4-8", "1.2.3.4-5-6", "1.2.3-4",
 	}
 
 	for _, vips := range invalidVIPs {
 		if err := ValidateVirtualIPs(vips); err == nil {
 			t.Errorf("Test invalid vips=%q got no error expected: error.", vips)
-		}
-	}
-}
-
-func getMockConfigurator(options *IPFailoverConfigCmdOptions, dc *deployapi.DeploymentConfig) *Configurator {
-	p := &MockPlugin{
-		Name:             "mock",
-		Options:          options,
-		DeploymentConfig: dc,
-	}
-	return NewConfigurator("mock-plugin", p, nil)
-}
-
-func TestValidateCmdOptionsForCreate(t *testing.T) {
-	tests := []struct {
-		Name             string
-		Create           bool
-		DeploymentConfig *deployapi.DeploymentConfig
-		ErrorExpectation bool
-	}{
-		{
-			Name:             "create-with-no-service",
-			Create:           true,
-			ErrorExpectation: false,
-		},
-		{
-			Name:             "create-with-service",
-			Create:           true,
-			DeploymentConfig: &deployapi.DeploymentConfig{},
-			ErrorExpectation: true,
-		},
-		{
-			Name:             "no-create-option-and-service",
-			ErrorExpectation: false,
-		},
-		{
-			Name:             "no-create-option-with-service",
-			DeploymentConfig: &deployapi.DeploymentConfig{},
-			ErrorExpectation: false,
-		},
-	}
-
-	for _, tc := range tests {
-		options := &IPFailoverConfigCmdOptions{Create: tc.Create}
-		plugin := &MockPlugin{
-			Name:             "mock",
-			Options:          options,
-			DeploymentConfig: tc.DeploymentConfig,
-		}
-		c := NewConfigurator(tc.Name, plugin, nil)
-
-		err := ValidateCmdOptions(options, c)
-		if err != nil && !tc.ErrorExpectation {
-			t.Errorf("Test case %q got an error: %v where none was expected.",
-				tc.Name, err)
-		}
-		if nil == err && tc.ErrorExpectation {
-			t.Errorf("Test case %q got no error - expected an error.", tc.Name)
 		}
 	}
 }
@@ -152,8 +92,7 @@ func TestValidateCmdOptionsVIPs(t *testing.T) {
 
 	for _, vips := range validVIPs {
 		options := &IPFailoverConfigCmdOptions{VirtualIPs: vips}
-		c := getMockConfigurator(options, nil)
-		if err := ValidateCmdOptions(options, c); err != nil {
+		if err := ValidateCmdOptions(options); err != nil {
 			t.Errorf("Test command options valid vips=%q got error %s expected: no error.",
 				vips, err)
 		}
@@ -164,13 +103,12 @@ func TestValidateCmdOptionsVIPs(t *testing.T) {
 		"1.2.3.4-5,1024.512.256.128-255", "1.1.1.1,a.b.c.d-e",
 		"a.b.c.d-e,5.4.3.2", "1.2.3.4.abc-def",
 		"5.6.7.8def-1.2.3.4abc", "4.1.1.1,a.12.13.14-55",
-		"8.8.8.8,9999.888.77.6-66,4.4.4.4-8",
+		"8.8.8.8,9999.888.77.6-66,4.4.4.4-8", "1.2.3.4-5-6", "1.2.3-4",
 	}
 
 	for _, vips := range invalidVIPs {
 		options := &IPFailoverConfigCmdOptions{VirtualIPs: vips}
-		c := getMockConfigurator(options, nil)
-		if err := ValidateCmdOptions(options, c); err == nil {
+		if err := ValidateCmdOptions(options); err == nil {
 			t.Errorf("Test command options invalid vips=%q got no error expected: error.", vips)
 		}
 	}

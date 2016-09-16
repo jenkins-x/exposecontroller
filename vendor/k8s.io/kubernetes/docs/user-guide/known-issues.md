@@ -3,8 +3,7 @@
 
 <!-- END MUNGE: UNVERSIONED_WARNING -->
 
-This file has moved to: http://kubernetes.github.io/docs/user-guide/known-issues/
-
+This file has moved to: https://github.com/kubernetes/kubernetes/blob/master/CHANGELOG.md
 
 
 

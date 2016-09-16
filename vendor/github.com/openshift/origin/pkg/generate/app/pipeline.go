@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/golang/glog"
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/validation"
+	extensions "k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/intstr"
 	kuval "k8s.io/kubernetes/pkg/util/validation"
@@ -24,8 +24,8 @@ import (
 type PipelineBuilder interface {
 	To(string) PipelineBuilder
 
-	NewBuildPipeline(string, *ComponentMatch, *SourceRepository) (*Pipeline, error)
-	NewImagePipeline(string, *ComponentMatch) (*Pipeline, error)
+	NewBuildPipeline(string, *ImageRef, *SourceRepository) (*Pipeline, error)
+	NewImagePipeline(string, *ImageRef) (*Pipeline, error)
 }
 
 // NewPipelineBuilder returns a PipelineBuilder using name as a base name. A
@@ -56,20 +56,7 @@ func (pb *pipelineBuilder) To(name string) PipelineBuilder {
 
 // NewBuildPipeline creates a new pipeline with components that are expected to
 // be built.
-func (pb *pipelineBuilder) NewBuildPipeline(from string, resolvedMatch *ComponentMatch, sourceRepository *SourceRepository) (*Pipeline, error) {
-	var input *ImageRef
-	if resolvedMatch != nil {
-		inputImage, err := InputImageFromMatch(resolvedMatch)
-		if err != nil {
-			return nil, fmt.Errorf("can't build %q: %v", from, err)
-		}
-		input = inputImage
-		if !input.AsImageStream && !resolvedMatch.Virtual {
-			msg := "Could not find an image stream match for %q. Make sure that a Docker image with that tag is available on the node for the build to succeed."
-			glog.Warningf(msg, resolvedMatch.Value)
-		}
-	}
-
+func (pb *pipelineBuilder) NewBuildPipeline(from string, input *ImageRef, sourceRepository *SourceRepository) (*Pipeline, error) {
 	strategy, source, err := StrategyAndSourceForRepository(sourceRepository, input)
 	if err != nil {
 		return nil, fmt.Errorf("can't build %q: %v", from, err)
@@ -144,16 +131,7 @@ func (pb *pipelineBuilder) NewBuildPipeline(from string, resolvedMatch *Componen
 
 // NewImagePipeline creates a new pipeline with components that are not expected
 // to be built.
-func (pb *pipelineBuilder) NewImagePipeline(from string, resolvedMatch *ComponentMatch) (*Pipeline, error) {
-	input, err := InputImageFromMatch(resolvedMatch)
-	if err != nil {
-		return nil, fmt.Errorf("can't include %q: %v", from, err)
-	}
-	if !input.AsImageStream {
-		msg := "Could not find an image stream match for %q. Make sure that a Docker image with that tag is available on the node for the deployment to succeed."
-		glog.Warningf(msg, resolvedMatch.Value)
-	}
-
+func (pb *pipelineBuilder) NewImagePipeline(from string, input *ImageRef) (*Pipeline, error) {
 	name, err := pb.nameGenerator.Generate(input)
 	if err != nil {
 		return nil, err
@@ -276,32 +254,37 @@ func (g PipelineGroup) String() string {
 	return strings.Join(s, "+")
 }
 
-var invalidServiceChars = regexp.MustCompile("[^-a-z0-9]")
-
-func makeValidServiceName(name string) (string, string) {
-	if ok, _ := validation.ValidateServiceName(name, false); ok {
-		return name, ""
-	}
+// MakeSimpleName strips any non-alphanumeric characters out of a string and returns
+// either an empty string or a string which is valid for most Kubernetes resources.
+func MakeSimpleName(name string) string {
 	name = strings.ToLower(name)
 	name = invalidServiceChars.ReplaceAllString(name, "")
 	name = strings.TrimFunc(name, func(r rune) bool { return r == '-' })
-	switch {
-	case len(name) == 0:
-		return "", "service-"
-	case len(name) > kuval.DNS952LabelMaxLength:
+	if len(name) > kuval.DNS952LabelMaxLength {
 		name = name[:kuval.DNS952LabelMaxLength]
+	}
+	return name
+}
+
+var invalidServiceChars = regexp.MustCompile("[^-a-z0-9]")
+
+func makeValidServiceName(name string) (string, string) {
+	if len(validation.ValidateServiceName(name, false)) == 0 {
+		return name, ""
+	}
+	name = MakeSimpleName(name)
+	if len(name) == 0 {
+		return "", "service-"
 	}
 	return name, ""
 }
 
 type sortablePorts []kapi.ContainerPort
 
-func (s sortablePorts) Len() int           { return len(s) }
-func (s sortablePorts) Less(i, j int) bool { return s[i].ContainerPort < s[j].ContainerPort }
-func (s sortablePorts) Swap(i, j int) {
-	p := s[i]
-	s[i] = s[j]
-	s[j] = p
+func (s sortablePorts) Len() int      { return len(s) }
+func (s sortablePorts) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s sortablePorts) Less(i, j int) bool {
+	return s[i].ContainerPort < s[j].ContainerPort
 }
 
 // portName returns a unique key for the given port and protocol which can be
@@ -313,53 +296,85 @@ func portName(port int, protocol kapi.Protocol) string {
 	return strings.ToLower(fmt.Sprintf("%d-%s", port, protocol))
 }
 
+// GenerateService creates a simple service for the provided elements.
+func GenerateService(meta kapi.ObjectMeta, selector map[string]string) *kapi.Service {
+	name, generateName := makeValidServiceName(meta.Name)
+	svc := &kapi.Service{
+		ObjectMeta: kapi.ObjectMeta{
+			Name:         name,
+			GenerateName: generateName,
+			Labels:       meta.Labels,
+		},
+		Spec: kapi.ServiceSpec{
+			Selector: selector,
+		},
+	}
+	return svc
+}
+
+// AllContainerPorts creates a sorted list of all ports in all provided containers.
+func AllContainerPorts(containers ...kapi.Container) []kapi.ContainerPort {
+	var ports []kapi.ContainerPort
+	for _, container := range containers {
+		ports = append(ports, container.Ports...)
+	}
+	sort.Sort(sortablePorts(ports))
+	return ports
+}
+
+// UniqueContainerToServicePorts creates one service port for each unique container port.
+func UniqueContainerToServicePorts(ports []kapi.ContainerPort) []kapi.ServicePort {
+	var result []kapi.ServicePort
+	svcPorts := map[string]struct{}{}
+	for _, p := range ports {
+		name := portName(int(p.ContainerPort), p.Protocol)
+		_, exists := svcPorts[name]
+		if exists {
+			continue
+		}
+		svcPorts[name] = struct{}{}
+		result = append(result, kapi.ServicePort{
+			Name:       name,
+			Port:       p.ContainerPort,
+			Protocol:   p.Protocol,
+			TargetPort: intstr.FromInt(int(p.ContainerPort)),
+		})
+	}
+	return result
+}
+
 // AddServices sets up services for the provided objects.
 func AddServices(objects Objects, firstPortOnly bool) Objects {
 	svcs := []runtime.Object{}
 	for _, o := range objects {
 		switch t := o.(type) {
 		case *deploy.DeploymentConfig:
-			name, generateName := makeValidServiceName(t.Name)
-			svc := &kapi.Service{
-				ObjectMeta: kapi.ObjectMeta{
-					Name:         name,
-					GenerateName: generateName,
-					Labels:       t.Labels,
-				},
-				Spec: kapi.ServiceSpec{
-					Selector: t.Spec.Selector,
-				},
+			svc := addServiceInternal(t.Spec.Template.Spec.Containers, t.ObjectMeta, t.Spec.Selector, firstPortOnly)
+			if svc != nil {
+				svcs = append(svcs, svc)
 			}
-
-			svcPorts := map[string]struct{}{}
-			for _, container := range t.Spec.Template.Spec.Containers {
-				ports := sortablePorts(container.Ports)
-				sort.Sort(&ports)
-				for _, p := range ports {
-					name := portName(p.ContainerPort, p.Protocol)
-					_, exists := svcPorts[name]
-					if exists {
-						continue
-					}
-					svcPorts[name] = struct{}{}
-					svc.Spec.Ports = append(svc.Spec.Ports, kapi.ServicePort{
-						Name:       name,
-						Port:       p.ContainerPort,
-						Protocol:   p.Protocol,
-						TargetPort: intstr.FromInt(p.ContainerPort),
-					})
-					if firstPortOnly {
-						break
-					}
-				}
+		case *extensions.DaemonSet:
+			svc := addServiceInternal(t.Spec.Template.Spec.Containers, t.ObjectMeta, t.Spec.Template.Labels, firstPortOnly)
+			if svc != nil {
+				svcs = append(svcs, svc)
 			}
-			if len(svc.Spec.Ports) == 0 {
-				continue
-			}
-			svcs = append(svcs, svc)
 		}
 	}
 	return append(objects, svcs...)
+}
+
+// addServiceInternal utility used by AddServices to create services for multiple types.
+func addServiceInternal(containers []kapi.Container, objectMeta kapi.ObjectMeta, selector map[string]string, firstPortOnly bool) *kapi.Service {
+	ports := UniqueContainerToServicePorts(AllContainerPorts(containers...))
+	if len(ports) == 0 {
+		return nil
+	}
+	if firstPortOnly {
+		ports = ports[:1]
+	}
+	svc := GenerateService(objectMeta, selector)
+	svc.Spec.Ports = ports
+	return svc
 }
 
 // AddRoutes sets up routes for the provided objects.
@@ -374,7 +389,7 @@ func AddRoutes(objects Objects) Objects {
 					Labels: t.Labels,
 				},
 				Spec: route.RouteSpec{
-					To: kapi.ObjectReference{
+					To: route.RouteTargetReference{
 						Name: t.Name,
 					},
 				},
@@ -412,11 +427,11 @@ func (a *acceptUnique) Accept(from interface{}) bool {
 	if err != nil {
 		return false
 	}
-	gvk, err := a.typer.ObjectKind(obj)
+	gvk, _, err := a.typer.ObjectKinds(obj)
 	if err != nil {
 		return false
 	}
-	key := fmt.Sprintf("%s/%s/%s", gvk.Kind, meta.Namespace, meta.Name)
+	key := fmt.Sprintf("%s/%s/%s", gvk[0].Kind, meta.Namespace, meta.Name)
 	_, exists := a.objects[key]
 	if exists {
 		return false
@@ -456,11 +471,11 @@ func (a *acceptBuildConfigs) Accept(from interface{}) bool {
 	if err != nil {
 		return false
 	}
-	gvk, err := a.typer.ObjectKind(obj)
+	gvk, _, err := a.typer.ObjectKinds(obj)
 	if err != nil {
 		return false
 	}
-	return gvk.GroupKind() == build.Kind("BuildConfig") || gvk.GroupKind() == image.Kind("ImageStream")
+	return gvk[0].GroupKind() == build.Kind("BuildConfig") || gvk[0].GroupKind() == image.Kind("ImageStream")
 }
 
 // NewAcceptBuildConfigs creates an acceptor accepting BuildConfig objects

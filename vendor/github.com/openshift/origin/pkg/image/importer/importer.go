@@ -1,38 +1,29 @@
 package importer
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
-	"path"
 	"strings"
-	"time"
 
 	"github.com/golang/glog"
 	gocontext "golang.org/x/net/context"
 
 	"github.com/docker/distribution"
-	"github.com/docker/distribution/context"
 	"github.com/docker/distribution/digest"
 	"github.com/docker/distribution/manifest/schema1"
+	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/api/errcode"
 	"github.com/docker/distribution/registry/api/v2"
-	registryclient "github.com/docker/distribution/registry/client"
-	"github.com/docker/distribution/registry/client/auth"
-	"github.com/docker/distribution/registry/client/transport"
 
-	kapi "k8s.io/kubernetes/pkg/api"
 	kapierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/util/validation/field"
 
 	"github.com/openshift/origin/pkg/dockerregistry"
 	"github.com/openshift/origin/pkg/image/api"
-	"github.com/openshift/origin/pkg/image/api/dockerpre012"
 )
 
 // Add a dockerregistry.Client to the passed context with this key to support v1 Docker registry importing
@@ -50,31 +41,25 @@ type RepositoryRetriever interface {
 	Repository(ctx gocontext.Context, registry *url.URL, repoName string, insecure bool) (distribution.Repository, error)
 }
 
-// ErrNotV2Registry is returned when the server does not report itself as a V2 Docker registry
-type ErrNotV2Registry struct {
-	Registry string
-}
-
-func (e *ErrNotV2Registry) Error() string {
-	return fmt.Sprintf("endpoint %q does not support v2 API", e.Registry)
-}
-
 // ImageStreamImport implements an import strategy for Docker images. It keeps a cache of images
 // per distinct auth context to reduce duplicate loads. This type is not thread safe.
 type ImageStreamImporter struct {
 	maximumTagsPerRepo int
 
 	retriever RepositoryRetriever
-	limiter   util.RateLimiter
+	limiter   flowcontrol.RateLimiter
 
 	digestToRepositoryCache map[gocontext.Context]map[manifestKey]*api.Image
+
+	// digestToLayerSizeCache maps layer digests to size.
+	digestToLayerSizeCache map[string]int64
 }
 
 // NewImageStreamImport creates an importer that will load images from a remote Docker registry into an
 // ImageStreamImport object. Limiter may be nil.
-func NewImageStreamImporter(retriever RepositoryRetriever, maximumTagsPerRepo int, limiter util.RateLimiter) *ImageStreamImporter {
+func NewImageStreamImporter(retriever RepositoryRetriever, maximumTagsPerRepo int, limiter flowcontrol.RateLimiter) *ImageStreamImporter {
 	if limiter == nil {
-		limiter = util.NewFakeAlwaysRateLimiter()
+		limiter = flowcontrol.NewFakeAlwaysRateLimiter()
 	}
 	return &ImageStreamImporter{
 		maximumTagsPerRepo: maximumTagsPerRepo,
@@ -83,33 +68,35 @@ func NewImageStreamImporter(retriever RepositoryRetriever, maximumTagsPerRepo in
 		limiter:   limiter,
 
 		digestToRepositoryCache: make(map[gocontext.Context]map[manifestKey]*api.Image),
+		digestToLayerSizeCache:  make(map[string]int64),
 	}
 }
 
-// contextImageCache returns the image cache entry for a context.
-func (i *ImageStreamImporter) contextImageCache(ctx gocontext.Context) map[manifestKey]*api.Image {
-	cache := i.digestToRepositoryCache[ctx]
-	if cache == nil {
-		cache = make(map[manifestKey]*api.Image)
-		i.digestToRepositoryCache[ctx] = cache
+// contextImageCache initializes the image cache entry for a context and layer size cache.
+func (i *ImageStreamImporter) contextImageCache(ctx gocontext.Context) {
+	if i.digestToLayerSizeCache == nil {
+		i.digestToLayerSizeCache = make(map[string]int64)
 	}
-	return cache
+	if _, ok := i.digestToRepositoryCache[ctx]; !ok {
+		i.digestToRepositoryCache[ctx] = make(map[manifestKey]*api.Image)
+	}
 }
 
 // Import tries to complete the provided isi object with images loaded from remote registries.
 func (i *ImageStreamImporter) Import(ctx gocontext.Context, isi *api.ImageStreamImport) error {
-	cache := i.contextImageCache(ctx)
-	importImages(ctx, i.retriever, isi, cache, i.limiter)
-	importFromRepository(ctx, i.retriever, isi, i.maximumTagsPerRepo, cache, i.limiter)
+	i.contextImageCache(ctx)
+	i.importImages(ctx, i.retriever, isi, i.limiter)
+	i.importFromRepository(ctx, i.retriever, isi, i.maximumTagsPerRepo, i.limiter)
 	return nil
 }
 
 // importImages updates the passed ImageStreamImport object and sets Status for each image based on whether the import
 // succeeded or failed. Cache is updated with any loaded images. Limiter is optional and controls how fast images are updated.
-func importImages(ctx gocontext.Context, retriever RepositoryRetriever, isi *api.ImageStreamImport, cache map[manifestKey]*api.Image, limiter util.RateLimiter) {
+func (i *ImageStreamImporter) importImages(ctx gocontext.Context, retriever RepositoryRetriever, isi *api.ImageStreamImport, limiter flowcontrol.RateLimiter) {
 	tags := make(map[manifestKey][]int)
 	ids := make(map[manifestKey][]int)
 	repositories := make(map[repositoryKey]*importRepository)
+	cache := i.digestToRepositoryCache[ctx]
 
 	isi.Status.Images = make([]api.ImageImportStatus, len(isi.Spec.Images))
 	for i := range isi.Spec.Images {
@@ -164,7 +151,7 @@ func importImages(ctx gocontext.Context, retriever RepositoryRetriever, isi *api
 
 	// for each repository we found, import all tags and digests
 	for key, repo := range repositories {
-		importRepositoryFromDocker(ctx, retriever, repo, limiter)
+		i.importRepositoryFromDocker(ctx, retriever, repo, limiter)
 		for _, tag := range repo.Tags {
 			j := manifestKey{repositoryKey: key}
 			j.value = tag.Name
@@ -212,10 +199,11 @@ func importImages(ctx gocontext.Context, retriever RepositoryRetriever, isi *api
 // importFromRepository imports the repository named on the ImageStreamImport, if any, importing up to maximumTags, and reporting
 // status on each image that is attempted to be imported. If the repository cannot be found or tags cannot be retrieved, the repository
 // status field is set.
-func importFromRepository(ctx gocontext.Context, retriever RepositoryRetriever, isi *api.ImageStreamImport, maximumTags int, cache map[manifestKey]*api.Image, limiter util.RateLimiter) {
+func (i *ImageStreamImporter) importFromRepository(ctx gocontext.Context, retriever RepositoryRetriever, isi *api.ImageStreamImport, maximumTags int, limiter flowcontrol.RateLimiter) {
 	if isi.Spec.Repository == nil {
 		return
 	}
+	cache := i.digestToRepositoryCache[ctx]
 	isi.Status.Repository = &api.RepositoryImportStatus{}
 	status := isi.Status.Repository
 
@@ -241,7 +229,7 @@ func importFromRepository(ctx gocontext.Context, retriever RepositoryRetriever, 
 		Insecure:    spec.ImportPolicy.Insecure,
 		MaximumTags: maximumTags,
 	}
-	importRepositoryFromDocker(ctx, retriever, repo, limiter)
+	i.importRepositoryFromDocker(ctx, retriever, repo, limiter)
 
 	if repo.Err != nil {
 		status.Status = imageImportStatus(repo.Err, "", "repository")
@@ -302,9 +290,63 @@ func applyErrorToRepository(repository *importRepository, err error) {
 	}
 }
 
+func formatRepositoryError(repository *importRepository, refName string, refID string, defErr error) (err error) {
+	err = defErr
+	switch {
+	case isDockerError(err, v2.ErrorCodeManifestUnknown):
+		ref := repository.Ref
+		ref.Tag, ref.ID = refName, refID
+		err = kapierrors.NewNotFound(api.Resource("dockerimage"), ref.Exact())
+	case isDockerError(err, errcode.ErrorCodeUnauthorized):
+		err = kapierrors.NewUnauthorized(fmt.Sprintf("you may not have access to the Docker image %q", repository.Ref.Exact()))
+	case strings.HasSuffix(err.Error(), "no basic auth credentials"):
+		err = kapierrors.NewUnauthorized(fmt.Sprintf("you may not have access to the Docker image %q", repository.Ref.Exact()))
+	}
+	return
+}
+
+// calculateImageSize gets and updates size of each image layer. If manifest v2 is converted to v1,
+// then it loses information about layers size. We have to get this information from server again.
+func (isi *ImageStreamImporter) calculateImageSize(ctx gocontext.Context, repo distribution.Repository, image *api.Image) error {
+	bs := repo.Blobs(ctx)
+
+	blobSet := sets.NewString()
+	size := int64(0)
+	for i := range image.DockerImageLayers {
+		layer := &image.DockerImageLayers[i]
+
+		if blobSet.Has(layer.Name) {
+			continue
+		}
+		blobSet.Insert(layer.Name)
+
+		if layerSize, ok := isi.digestToLayerSizeCache[layer.Name]; ok {
+			size += layerSize
+			continue
+		}
+
+		desc, err := bs.Stat(ctx, digest.Digest(layer.Name))
+		if err != nil {
+			return err
+		}
+
+		isi.digestToLayerSizeCache[layer.Name] = desc.Size
+		layer.LayerSize = desc.Size
+		size += desc.Size
+	}
+
+	if len(image.DockerImageConfig) > 0 && !blobSet.Has(image.DockerImageMetadata.ID) {
+		blobSet.Insert(image.DockerImageMetadata.ID)
+		size += int64(len(image.DockerImageConfig))
+	}
+
+	image.DockerImageMetadata.Size = size
+	return nil
+}
+
 // importRepositoryFromDocker loads the tags and images requested in the passed importRepository, obeying the
 // optional rate limiter.  Errors are set onto the individual tags and digest objects.
-func importRepositoryFromDocker(ctx gocontext.Context, retriever RepositoryRetriever, repository *importRepository, limiter util.RateLimiter) {
+func (isi *ImageStreamImporter) importRepositoryFromDocker(ctx gocontext.Context, retriever RepositoryRetriever, repository *importRepository, limiter flowcontrol.RateLimiter) {
 	glog.V(5).Infof("importing remote Docker repository registry=%s repository=%s insecure=%t", repository.Registry, repository.Name, repository.Insecure)
 	// retrieve the repository
 	repo, err := retriever.Repository(ctx, repository.Registry, repository.Name, repository.Insecure)
@@ -345,9 +387,12 @@ func importRepositoryFromDocker(ctx gocontext.Context, retriever RepositoryRetri
 		return
 	}
 
+	// get a blob context
+	b := repo.Blobs(ctx)
+
 	// if repository import is requested (MaximumTags), attempt to load the tags, sort them, and request the first N
 	if count := repository.MaximumTags; count > 0 || count == -1 {
-		tags, err := s.Tags()
+		tags, err := repo.Tags(ctx).All(ctx)
 		if err != nil {
 			glog.V(5).Infof("unable to access tags for repository %#v: %#v", repository, err)
 			switch {
@@ -392,30 +437,49 @@ func importRepositoryFromDocker(ctx gocontext.Context, retriever RepositoryRetri
 			continue
 		}
 		limiter.Accept()
-		m, err := s.Get(d)
+		manifest, err := s.Get(ctx, d)
 		if err != nil {
 			glog.V(5).Infof("unable to access digest %q for repository %#v: %#v", d, repository, err)
-			switch {
-			case isDockerError(err, v2.ErrorCodeManifestUnknown):
-				ref := repository.Ref
-				ref.Tag, ref.ID = "", importDigest.Name
-				err = kapierrors.NewNotFound(api.Resource("dockerimage"), ref.Exact())
-			case isDockerError(err, errcode.ErrorCodeUnauthorized):
-				err = kapierrors.NewUnauthorized(fmt.Sprintf("you may not have access to the Docker image %q", repository.Ref.Exact()))
-			case strings.HasSuffix(err.Error(), "no basic auth credentials"):
-				err = kapierrors.NewUnauthorized(fmt.Sprintf("you may not have access to the Docker image %q", repository.Ref.Exact()))
-			}
-			importDigest.Err = err
+			importDigest.Err = formatRepositoryError(repository, "", importDigest.Name, err)
 			continue
 		}
-		importDigest.Image, err = schema1ToImage(m, d)
+
+		if signedManifest, isSchema1 := manifest.(*schema1.SignedManifest); isSchema1 {
+			importDigest.Image, err = schema1ToImage(signedManifest, d)
+		} else if deserializedManifest, isSchema2 := manifest.(*schema2.DeserializedManifest); isSchema2 {
+			imageConfig, err := b.Get(ctx, deserializedManifest.Config.Digest)
+			if err != nil {
+				glog.V(5).Infof("unable to access the image config using digest %q for repository %#v: %#v", d, repository, err)
+				if isDockerError(err, v2.ErrorCodeManifestUnknown) {
+					ref := repository.Ref
+					ref.ID = deserializedManifest.Config.Digest.String()
+					importDigest.Err = kapierrors.NewNotFound(api.Resource("dockerimage"), ref.Exact())
+				} else {
+					importDigest.Err = formatRepositoryError(repository, "", importDigest.Name, err)
+				}
+				continue
+			}
+
+			importDigest.Image, err = schema2ToImage(deserializedManifest, imageConfig, d)
+		} else {
+			glog.V(5).Infof("unsupported manifest type: %T", manifest)
+			continue
+		}
+
 		if err != nil {
 			importDigest.Err = err
 			continue
 		}
+
 		if err := api.ImageWithMetadata(importDigest.Image); err != nil {
 			importDigest.Err = err
 			continue
+		}
+		if importDigest.Image.DockerImageMetadata.Size == 0 {
+			if err := isi.calculateImageSize(ctx, repo, importDigest.Image); err != nil {
+				importDigest.Err = err
+				continue
+			}
 		}
 	}
 
@@ -425,23 +489,41 @@ func importRepositoryFromDocker(ctx gocontext.Context, retriever RepositoryRetri
 			continue
 		}
 		limiter.Accept()
-		m, err := s.GetByTag(importTag.Name)
+
+		manifest, err := s.Get(ctx, "", distribution.WithTag(importTag.Name))
 		if err != nil {
-			glog.V(5).Infof("unable to access tag %q for repository %#v: %#v", importTag.Name, repository, err)
-			switch {
-			case isDockerError(err, v2.ErrorCodeManifestUnknown):
-				ref := repository.Ref
-				ref.Tag = importTag.Name
-				err = kapierrors.NewNotFound(api.Resource("dockerimage"), ref.Exact())
-			case isDockerError(err, errcode.ErrorCodeUnauthorized):
-				err = kapierrors.NewUnauthorized(fmt.Sprintf("you may not have access to the Docker image %q", repository.Ref.Exact()))
-			case strings.HasSuffix(err.Error(), "no basic auth credentials"):
-				err = kapierrors.NewUnauthorized(fmt.Sprintf("you may not have access to the Docker image %q", repository.Ref.Exact()))
+			glog.V(5).Infof("unable to get manifest by tag %q for repository %#v: %#v", importTag.Name, repository, err)
+			// try to resolve the tag and fetch manifest by digest instead
+			desc, getTagErr := repo.Tags(ctx).Get(ctx, importTag.Name)
+			if getTagErr != nil {
+				glog.V(5).Infof("unable to get tag %q for repository %#v: %#v", importTag.Name, repository, getTagErr)
+				importTag.Err = formatRepositoryError(repository, importTag.Name, "", err)
+				continue
 			}
-			importTag.Err = err
+			m, getManifestErr := s.Get(ctx, desc.Digest)
+			if getManifestErr != nil {
+				glog.V(5).Infof("unable to access digest %q for tag %q for repository %#v: %#v", desc.Digest, importTag.Name, repository, getManifestErr)
+				importTag.Err = formatRepositoryError(repository, importTag.Name, "", err)
+				continue
+			}
+			manifest = m
+		}
+
+		if signedManifest, isSchema1 := manifest.(*schema1.SignedManifest); isSchema1 {
+			importTag.Image, err = schema1ToImage(signedManifest, "")
+		} else if deserializedManifest, isSchema2 := manifest.(*schema2.DeserializedManifest); isSchema2 {
+			imageConfig, err := b.Get(ctx, deserializedManifest.Config.Digest)
+			if err != nil {
+				glog.V(5).Infof("unable to access image config using digest %q for tag %q for repository %#v: %#v", deserializedManifest.Config.Digest, importTag.Name, repository, err)
+				importTag.Err = formatRepositoryError(repository, importTag.Name, "", err)
+				continue
+			}
+			importTag.Image, err = schema2ToImage(deserializedManifest, imageConfig, "")
+		} else {
+			glog.V(5).Infof("unsupported manifest type: %T", manifest)
 			continue
 		}
-		importTag.Image, err = schema1ToImage(m, "")
+
 		if err != nil {
 			importTag.Err = err
 			continue
@@ -450,20 +532,26 @@ func importRepositoryFromDocker(ctx gocontext.Context, retriever RepositoryRetri
 			importTag.Err = err
 			continue
 		}
+		if importTag.Image.DockerImageMetadata.Size == 0 {
+			if err := isi.calculateImageSize(ctx, repo, importTag.Image); err != nil {
+				importTag.Err = err
+				continue
+			}
+		}
 	}
 }
 
-func importRepositoryFromDockerV1(ctx gocontext.Context, repository *importRepository, limiter util.RateLimiter) {
+func importRepositoryFromDockerV1(ctx gocontext.Context, repository *importRepository, limiter flowcontrol.RateLimiter) {
 	value := ctx.Value(ContextKeyV1RegistryClient)
 	if value == nil {
-		err := kapierrors.NewForbidden(api.Resource(""), "", fmt.Errorf("registry %q does not support the v2 Registry API", repository.Registry.Host)).(*kapierrors.StatusError)
+		err := kapierrors.NewForbidden(api.Resource(""), "", fmt.Errorf("registry %q does not support the v2 Registry API", repository.Registry.Host))
 		err.ErrStatus.Reason = "NotV2Registry"
 		applyErrorToRepository(repository, err)
 		return
 	}
 	client, ok := value.(dockerregistry.Client)
 	if !ok {
-		err := kapierrors.NewForbidden(api.Resource(""), "", fmt.Errorf("registry %q does not support the v2 Registry API", repository.Registry.Host)).(*kapierrors.StatusError)
+		err := kapierrors.NewForbidden(api.Resource(""), "", fmt.Errorf("registry %q does not support the v2 Registry API", repository.Registry.Host))
 		err.ErrStatus.Reason = "NotV2Registry"
 		return
 	}
@@ -592,9 +680,9 @@ func imageImportStatus(err error, kind, position string) unversioned.Status {
 	case kapierrors.APIStatus:
 		return t.Status()
 	case *field.Error:
-		return kapierrors.NewInvalid(api.Kind(kind), position, field.ErrorList{t}).(kapierrors.APIStatus).Status()
+		return kapierrors.NewInvalid(api.Kind(kind), position, field.ErrorList{t}).ErrStatus
 	default:
-		return kapierrors.NewInternalError(err).(kapierrors.APIStatus).Status()
+		return kapierrors.NewInternalError(err).ErrStatus
 	}
 }
 
@@ -604,200 +692,5 @@ func setImageImportStatus(images *api.ImageStreamImport, i int, tag string, err 
 }
 
 func invalidStatus(position string, errs ...*field.Error) unversioned.Status {
-	return kapierrors.NewInvalid(api.Kind(""), position, errs).(kapierrors.APIStatus).Status()
-}
-
-// NewContext is capable of creating RepositoryRetrievers.
-func NewContext(transport, insecureTransport http.RoundTripper) Context {
-	return Context{
-		Transport:         transport,
-		InsecureTransport: insecureTransport,
-		Challenges:        auth.NewSimpleChallengeManager(),
-	}
-}
-
-type Context struct {
-	Transport         http.RoundTripper
-	InsecureTransport http.RoundTripper
-	Challenges        auth.ChallengeManager
-}
-
-func (c Context) WithCredentials(credentials auth.CredentialStore) RepositoryRetriever {
-	return &repositoryRetriever{
-		context:     c,
-		credentials: credentials,
-
-		pings:    make(map[url.URL]error),
-		redirect: make(map[url.URL]*url.URL),
-	}
-}
-
-type repositoryRetriever struct {
-	context     Context
-	credentials auth.CredentialStore
-
-	pings    map[url.URL]error
-	redirect map[url.URL]*url.URL
-}
-
-func (r *repositoryRetriever) Repository(ctx gocontext.Context, registry *url.URL, repoName string, insecure bool) (distribution.Repository, error) {
-	t := r.context.Transport
-	if insecure && r.context.InsecureTransport != nil {
-		t = r.context.InsecureTransport
-	}
-	src := *registry
-	// ping the registry to get challenge headers
-	if err, ok := r.pings[src]; ok {
-		if err != nil {
-			return nil, err
-		}
-		if redirect, ok := r.redirect[src]; ok {
-			src = *redirect
-		}
-	} else {
-		redirect, err := r.ping(src, insecure, t)
-		r.pings[src] = err
-		if err != nil {
-			return nil, err
-		}
-		if redirect != nil {
-			r.redirect[src] = redirect
-			src = *redirect
-		}
-	}
-
-	rt := transport.NewTransport(
-		t,
-		// TODO: slightly smarter authorizer that retries unauthenticated requests
-		// TODO: make multiple attempts if the first credential fails
-		auth.NewAuthorizer(
-			r.context.Challenges,
-			auth.NewTokenHandler(t, r.credentials, repoName, "pull"),
-			auth.NewBasicHandler(r.credentials),
-		),
-	)
-	return registryclient.NewRepository(context.Context(ctx), repoName, src.String(), rt)
-}
-
-func (r *repositoryRetriever) ping(registry url.URL, insecure bool, transport http.RoundTripper) (*url.URL, error) {
-	pingClient := &http.Client{
-		Transport: transport,
-		Timeout:   15 * time.Second,
-	}
-	target := registry
-	target.Path = path.Join(target.Path, "v2") + "/"
-	req, err := http.NewRequest("GET", target.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := pingClient.Do(req)
-	if err != nil {
-		if insecure && registry.Scheme == "https" {
-			glog.V(5).Infof("Falling back to an HTTP check for an insecure registry %s: %v", registry, err)
-			registry.Scheme = "http"
-			_, nErr := r.ping(registry, true, transport)
-			if nErr != nil {
-				return nil, nErr
-			}
-			return &registry, nil
-		}
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	versions := auth.APIVersions(resp, "Docker-Distribution-API-Version")
-	if len(versions) == 0 {
-		glog.V(5).Infof("Registry responded to v2 Docker endpoint, but has no header for Docker Distribution %s: %d, %#v", req.URL, resp.StatusCode, resp.Header)
-		return nil, &ErrNotV2Registry{Registry: registry.String()}
-	}
-
-	r.context.Challenges.AddResponse(resp)
-
-	return nil, nil
-}
-
-func schema1ToImage(manifest *schema1.SignedManifest, d digest.Digest) (*api.Image, error) {
-	if len(manifest.History) == 0 {
-		return nil, fmt.Errorf("image has no v1Compatibility history and cannot be used")
-	}
-	dockerImage, err := unmarshalDockerImage([]byte(manifest.History[0].V1Compatibility))
-	if err != nil {
-		return nil, err
-	}
-	if len(d) > 0 {
-		dockerImage.ID = d.String()
-	} else {
-		if p, err := manifest.Payload(); err == nil {
-			d, err := digest.FromBytes(p)
-			if err != nil {
-				return nil, fmt.Errorf("unable to create digest from image payload: %v", err)
-			}
-			dockerImage.ID = d.String()
-		} else {
-			d, err := digest.FromBytes(manifest.Raw)
-			if err != nil {
-				return nil, fmt.Errorf("unable to create digest from image bytes: %v", err)
-			}
-			dockerImage.ID = d.String()
-		}
-	}
-	image := &api.Image{
-		ObjectMeta: kapi.ObjectMeta{
-			Name: dockerImage.ID,
-		},
-		DockerImageMetadata:        *dockerImage,
-		DockerImageManifest:        string(manifest.Raw),
-		DockerImageMetadataVersion: "1.0",
-	}
-
-	return image, nil
-}
-
-func schema0ToImage(dockerImage *dockerregistry.Image, id string) (*api.Image, error) {
-	var baseImage api.DockerImage
-	if err := kapi.Scheme.Convert(&dockerImage.Image, &baseImage); err != nil {
-		return nil, fmt.Errorf("could not convert image: %#v", err)
-	}
-
-	image := &api.Image{
-		ObjectMeta: kapi.ObjectMeta{
-			Name: dockerImage.ID,
-		},
-		DockerImageMetadata:        baseImage,
-		DockerImageMetadataVersion: "1.0",
-	}
-
-	return image, nil
-}
-
-func unmarshalDockerImage(body []byte) (*api.DockerImage, error) {
-	var image dockerpre012.DockerImage
-	if err := json.Unmarshal(body, &image); err != nil {
-		return nil, err
-	}
-	dockerImage := &api.DockerImage{}
-	if err := kapi.Scheme.Convert(&image, dockerImage); err != nil {
-		return nil, err
-	}
-	return dockerImage, nil
-}
-
-func isDockerError(err error, code errcode.ErrorCode) bool {
-	switch t := err.(type) {
-	case errcode.Errors:
-		for _, err := range t {
-			if isDockerError(err, code) {
-				return true
-			}
-		}
-	case errcode.ErrorCode:
-		if code == t {
-			return true
-		}
-	case errcode.Error:
-		if t.ErrorCode() == code {
-			return true
-		}
-	}
-	return false
+	return kapierrors.NewInvalid(api.Kind(""), position, errs).ErrStatus
 }

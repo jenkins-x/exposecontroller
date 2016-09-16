@@ -12,7 +12,7 @@
 Currently Node.Status has Capacity, but no concept of node Allocatable. We need additional
 parameters to serve several purposes:
 
-1. [Kubernetes metrics](compute-resource-metrics-api.md) provides "/docker-daemon", "/kubelet",
+1. Kubernetes metrics provides "/docker-daemon", "/kubelet",
    "/kube-proxy", "/system" etc. raw containers for monitoring system component resource usage
    patterns and detecting regressions. Eventually we want to cap system component usage to a certain
    limit / request. However this is not currently feasible due to a variety of reasons including:
@@ -41,7 +41,7 @@ reservation grows), or running multiple Kubelets on a single node.
 ![image](node-allocatable.png)
 
 1. **Node Capacity** - Already provided as
-   [`NodeStatus.Capacity`](https://htmlpreview.github.io/?https://github.com/kubernetes/kubernetes/blob/release-1.2/docs/api-reference/v1/definitions.html#_v1_nodestatus),
+   [`NodeStatus.Capacity`](https://htmlpreview.github.io/?https://github.com/kubernetes/kubernetes/blob/v1.3.0-beta.0/docs/api-reference/v1/definitions.html#_v1_nodestatus),
    this is total capacity read from the node instance, and assumed to be constant.
 2. **System-Reserved** (proposed) - Compute resources reserved for processes which are not managed by
    Kubernetes. Currently this covers all the processes lumped together in the `/system` raw
@@ -57,7 +57,7 @@ reservation grows), or running multiple Kubelets on a single node.
 #### Allocatable
 
 Add `Allocatable` (4) to
-[`NodeStatus`](https://htmlpreview.github.io/?https://github.com/kubernetes/kubernetes/blob/release-1.2/docs/api-reference/v1/definitions.html#_v1_nodestatus):
+[`NodeStatus`](https://htmlpreview.github.io/?https://github.com/kubernetes/kubernetes/blob/v1.3.0-beta.0/docs/api-reference/v1/definitions.html#_v1_nodestatus):
 
 ```
 type NodeStatus struct {

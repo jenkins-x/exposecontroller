@@ -27,7 +27,7 @@ import (
 	"github.com/google/gofuzz"
 	flag "github.com/spf13/pflag"
 
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/diff"
 )
 
 var fuzzIters = flag.Int("fuzz-iters", 50, "How many fuzzing iterations to do.")
@@ -611,7 +611,7 @@ func TestConverter_meta(t *testing.T) {
 	checks := 0
 	err := c.RegisterConversionFunc(
 		func(in *Foo, out *Bar, s Scope) error {
-			if s.Meta() == nil || s.Meta().SrcVersion != "test" || s.Meta().DestVersion != "passes" {
+			if s.Meta() == nil {
 				t.Errorf("Meta did not get passed!")
 			}
 			checks++
@@ -624,7 +624,7 @@ func TestConverter_meta(t *testing.T) {
 	}
 	err = c.RegisterConversionFunc(
 		func(in *string, out *string, s Scope) error {
-			if s.Meta() == nil || s.Meta().SrcVersion != "test" || s.Meta().DestVersion != "passes" {
+			if s.Meta() == nil {
 				t.Errorf("Meta did not get passed a second time!")
 			}
 			checks++
@@ -634,7 +634,7 @@ func TestConverter_meta(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	err = c.Convert(&Foo{}, &Bar{}, 0, &Meta{SrcVersion: "test", DestVersion: "passes"})
+	err = c.Convert(&Foo{}, &Bar{}, 0, &Meta{})
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -835,12 +835,12 @@ func objDiff(a, b interface{}) string {
 	if err != nil {
 		panic("b")
 	}
-	return util.StringDiff(string(ab), string(bb))
+	return diff.StringDiff(string(ab), string(bb))
 
 	// An alternate diff attempt, in case json isn't showing you
 	// the difference. (reflect.DeepEqual makes a distinction between
 	// nil and empty slices, for example.)
-	//return util.StringDiff(
+	//return diff.StringDiff(
 	//	fmt.Sprintf("%#v", a),
 	//	fmt.Sprintf("%#v", b),
 	//)

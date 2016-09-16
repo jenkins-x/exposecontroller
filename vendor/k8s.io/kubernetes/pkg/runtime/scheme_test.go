@@ -27,7 +27,7 @@ import (
 	"k8s.io/kubernetes/pkg/conversion"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/runtime/serializer"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/diff"
 )
 
 var fuzzIters = flag.Int("fuzz-iters", 50, "How many fuzzing iterations to do.")
@@ -65,24 +65,12 @@ func TestScheme(t *testing.T) {
 	// Register functions to verify that scope.Meta() gets set correctly.
 	err := scheme.AddConversionFuncs(
 		func(in *InternalSimple, out *ExternalSimple, scope conversion.Scope) error {
-			if e, a := internalGV.String(), scope.Meta().SrcVersion; e != a {
-				t.Errorf("Expected '%v', got '%v'", e, a)
-			}
-			if e, a := externalGV.String(), scope.Meta().DestVersion; e != a {
-				t.Errorf("Expected '%v', got '%v'", e, a)
-			}
 			scope.Convert(&in.TypeMeta, &out.TypeMeta, 0)
 			scope.Convert(&in.TestString, &out.TestString, 0)
 			internalToExternalCalls++
 			return nil
 		},
 		func(in *ExternalSimple, out *InternalSimple, scope conversion.Scope) error {
-			if e, a := externalGV.String(), scope.Meta().SrcVersion; e != a {
-				t.Errorf("Expected '%v', got '%v'", e, a)
-			}
-			if e, a := internalGV.String(), scope.Meta().DestVersion; e != a {
-				t.Errorf("Expected '%v', got '%v'", e, a)
-			}
 			scope.Convert(&in.TypeMeta, &out.TypeMeta, 0)
 			scope.Convert(&in.TestString, &out.TestString, 0)
 			externalToInternalCalls++
@@ -140,7 +128,7 @@ func TestScheme(t *testing.T) {
 
 	// Test Convert
 	external := &ExternalSimple{}
-	err = scheme.Convert(simple, external)
+	err = scheme.Convert(simple, external, nil)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -239,7 +227,7 @@ func TestExternalToInternalMapping(t *testing.T) {
 		if err != nil {
 			t.Errorf("unexpected error '%v' (%v)", err, item.encoded)
 		} else if e, a := item.obj, gotDecoded; !reflect.DeepEqual(e, a) {
-			t.Errorf("%d: unexpected objects:\n%s", i, util.ObjectGoPrintSideBySide(e, a))
+			t.Errorf("%d: unexpected objects:\n%s", i, diff.ObjectGoPrintSideBySide(e, a))
 		}
 	}
 }
@@ -274,7 +262,8 @@ func TestExtensionMapping(t *testing.T) {
 			},
 			&InternalExtensionType{
 				Extension: &runtime.Unknown{
-					RawJSON: []byte(`{"apiVersion":"test.group/testExternal","kind":"A","testString":"foo"}`),
+					Raw:         []byte(`{"apiVersion":"test.group/testExternal","kind":"A","testString":"foo"}`),
+					ContentType: runtime.ContentTypeJSON,
 				},
 			},
 			// apiVersion is set in the serialized object for easier consumption by clients
@@ -284,7 +273,8 @@ func TestExtensionMapping(t *testing.T) {
 			&InternalExtensionType{Extension: runtime.NewEncodable(codec, &ExtensionB{TestString: "bar"})},
 			&InternalExtensionType{
 				Extension: &runtime.Unknown{
-					RawJSON: []byte(`{"apiVersion":"test.group/testExternal","kind":"B","testString":"bar"}`),
+					Raw:         []byte(`{"apiVersion":"test.group/testExternal","kind":"B","testString":"bar"}`),
+					ContentType: runtime.ContentTypeJSON,
 				},
 			},
 			// apiVersion is set in the serialized object for easier consumption by clients
@@ -312,7 +302,7 @@ func TestExtensionMapping(t *testing.T) {
 		if err != nil {
 			t.Errorf("unexpected error '%v' (%v)", err, item.encoded)
 		} else if e, a := item.expected, gotDecoded; !reflect.DeepEqual(e, a) {
-			t.Errorf("%d: unexpected objects:\n%s", i, util.ObjectGoPrintSideBySide(e, a))
+			t.Errorf("%d: unexpected objects:\n%s", i, diff.ObjectGoPrintSideBySide(e, a))
 		}
 	}
 }
@@ -361,13 +351,14 @@ func TestUnversionedTypes(t *testing.T) {
 	codec := serializer.NewCodecFactory(scheme).LegacyCodec(externalGV)
 
 	if unv, ok := scheme.IsUnversioned(&InternalSimple{}); !unv || !ok {
-		t.Fatal("type not unversioned and in scheme: %t %t", unv, ok)
+		t.Fatalf("type not unversioned and in scheme: %t %t", unv, ok)
 	}
 
-	kind, err := scheme.ObjectKind(&InternalSimple{})
+	kinds, _, err := scheme.ObjectKinds(&InternalSimple{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	kind := kinds[0]
 	if kind != externalGV.WithKind("InternalSimple") {
 		t.Fatalf("unexpected: %#v", kind)
 	}
@@ -470,10 +461,10 @@ type ExternalInternalSame struct {
 }
 
 func (obj *MyWeirdCustomEmbeddedVersionKindField) GetObjectKind() unversioned.ObjectKind { return obj }
-func (obj *MyWeirdCustomEmbeddedVersionKindField) SetGroupVersionKind(gvk *unversioned.GroupVersionKind) {
+func (obj *MyWeirdCustomEmbeddedVersionKindField) SetGroupVersionKind(gvk unversioned.GroupVersionKind) {
 	obj.APIVersion, obj.ObjectKind = gvk.ToAPIVersionAndKind()
 }
-func (obj *MyWeirdCustomEmbeddedVersionKindField) GroupVersionKind() *unversioned.GroupVersionKind {
+func (obj *MyWeirdCustomEmbeddedVersionKindField) GroupVersionKind() unversioned.GroupVersionKind {
 	return unversioned.FromAPIVersionAndKind(obj.APIVersion, obj.ObjectKind)
 }
 
@@ -540,7 +531,7 @@ func TestKnownTypes(t *testing.T) {
 func TestConvertToVersion(t *testing.T) {
 	s := GetTestScheme()
 	tt := &TestType1{A: "I'm not a pointer object"}
-	other, err := s.ConvertToVersion(tt, "v1")
+	other, err := s.ConvertToVersion(tt, unversioned.GroupVersion{Version: "v1"})
 	if err != nil {
 		t.Fatalf("Failure: %v", err)
 	}
@@ -568,24 +559,12 @@ func TestMetaValues(t *testing.T) {
 	err := s.AddConversionFuncs(
 		func(in *InternalSimple, out *ExternalSimple, scope conversion.Scope) error {
 			t.Logf("internal -> external")
-			if e, a := internalGV.String(), scope.Meta().SrcVersion; e != a {
-				t.Fatalf("Expected '%v', got '%v'", e, a)
-			}
-			if e, a := externalGV.String(), scope.Meta().DestVersion; e != a {
-				t.Fatalf("Expected '%v', got '%v'", e, a)
-			}
 			scope.Convert(&in.TestString, &out.TestString, 0)
 			internalToExternalCalls++
 			return nil
 		},
 		func(in *ExternalSimple, out *InternalSimple, scope conversion.Scope) error {
 			t.Logf("external -> internal")
-			if e, a := externalGV.String(), scope.Meta().SrcVersion; e != a {
-				t.Errorf("Expected '%v', got '%v'", e, a)
-			}
-			if e, a := internalGV.String(), scope.Meta().DestVersion; e != a {
-				t.Fatalf("Expected '%v', got '%v'", e, a)
-			}
 			scope.Convert(&in.TestString, &out.TestString, 0)
 			externalToInternalCalls++
 			return nil
@@ -600,12 +579,12 @@ func TestMetaValues(t *testing.T) {
 
 	s.Log(t)
 
-	out, err := s.ConvertToVersion(simple, externalGV.String())
+	out, err := s.ConvertToVersion(simple, externalGV)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	internal, err := s.ConvertToVersion(out, internalGV.String())
+	internal, err := s.ConvertToVersion(out, internalGV)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -641,12 +620,6 @@ func TestMetaValuesUnregisteredConvert(t *testing.T) {
 	// Register functions to verify that scope.Meta() gets set correctly.
 	err := s.AddConversionFuncs(
 		func(in *InternalSimple, out *ExternalSimple, scope conversion.Scope) error {
-			if e, a := "unknown/unknown", scope.Meta().SrcVersion; e != a {
-				t.Fatalf("Expected '%v', got '%v'", e, a)
-			}
-			if e, a := "unknown/unknown", scope.Meta().DestVersion; e != a {
-				t.Fatalf("Expected '%v', got '%v'", e, a)
-			}
 			scope.Convert(&in.TestString, &out.TestString, 0)
 			internalToExternalCalls++
 			return nil
@@ -658,7 +631,7 @@ func TestMetaValuesUnregisteredConvert(t *testing.T) {
 
 	simple := &InternalSimple{TestString: "foo"}
 	external := &ExternalSimple{}
-	err = s.Convert(simple, external)
+	err = s.Convert(simple, external, nil)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}

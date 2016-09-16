@@ -39,7 +39,7 @@ func (d *ClusterRoles) CanRun() (bool, error) {
 		return false, fmt.Errorf("must have client.SubjectAccessReviews")
 	}
 
-	return userCan(d.SARClient, authorizationapi.AuthorizationAttributes{
+	return userCan(d.SARClient, authorizationapi.Action{
 		Verb:     "list",
 		Group:    authorizationapi.GroupName,
 		Resource: "clusterroles",
@@ -56,7 +56,7 @@ func (d *ClusterRoles) Check() types.DiagnosticResult {
 		RoleClient: d.ClusterRolesClient.ClusterRoles(),
 	}
 
-	changedClusterRoles, err := reconcileOptions.ChangedClusterRoles()
+	changedClusterRoles, _, err := reconcileOptions.ChangedClusterRoles()
 	if err != nil {
 		r.Error("CRD1000", err, fmt.Sprintf("Error inspecting ClusterRoles: %v", err))
 		return r

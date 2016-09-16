@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	internal "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	api "k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/runtime"
 )
@@ -145,6 +146,48 @@ func TestSortingPrinter(t *testing.T) {
 			field: "{.metadata.name}",
 		},
 		{
+			name: "random-order-timestamp",
+			obj: &api.PodList{
+				Items: []api.Pod{
+					{
+						ObjectMeta: api.ObjectMeta{
+							CreationTimestamp: unversioned.Unix(300, 0),
+						},
+					},
+					{
+						ObjectMeta: api.ObjectMeta{
+							CreationTimestamp: unversioned.Unix(100, 0),
+						},
+					},
+					{
+						ObjectMeta: api.ObjectMeta{
+							CreationTimestamp: unversioned.Unix(200, 0),
+						},
+					},
+				},
+			},
+			sort: &api.PodList{
+				Items: []api.Pod{
+					{
+						ObjectMeta: api.ObjectMeta{
+							CreationTimestamp: unversioned.Unix(100, 0),
+						},
+					},
+					{
+						ObjectMeta: api.ObjectMeta{
+							CreationTimestamp: unversioned.Unix(200, 0),
+						},
+					},
+					{
+						ObjectMeta: api.ObjectMeta{
+							CreationTimestamp: unversioned.Unix(300, 0),
+						},
+					},
+				},
+			},
+			field: "{.metadata.creationTimestamp}",
+		},
+		{
 			name: "random-order-numbers",
 			obj: &api.ReplicationControllerList{
 				Items: []api.ReplicationController{
@@ -190,16 +233,16 @@ func TestSortingPrinter(t *testing.T) {
 			name: "v1.List in order",
 			obj: &api.List{
 				Items: []runtime.RawExtension{
-					{RawJSON: encodeOrDie(a)},
-					{RawJSON: encodeOrDie(b)},
-					{RawJSON: encodeOrDie(c)},
+					{Raw: encodeOrDie(a)},
+					{Raw: encodeOrDie(b)},
+					{Raw: encodeOrDie(c)},
 				},
 			},
 			sort: &api.List{
 				Items: []runtime.RawExtension{
-					{RawJSON: encodeOrDie(a)},
-					{RawJSON: encodeOrDie(b)},
-					{RawJSON: encodeOrDie(c)},
+					{Raw: encodeOrDie(a)},
+					{Raw: encodeOrDie(b)},
+					{Raw: encodeOrDie(c)},
 				},
 			},
 			field: "{.metadata.name}",
@@ -208,16 +251,16 @@ func TestSortingPrinter(t *testing.T) {
 			name: "v1.List in reverse",
 			obj: &api.List{
 				Items: []runtime.RawExtension{
-					{RawJSON: encodeOrDie(c)},
-					{RawJSON: encodeOrDie(b)},
-					{RawJSON: encodeOrDie(a)},
+					{Raw: encodeOrDie(c)},
+					{Raw: encodeOrDie(b)},
+					{Raw: encodeOrDie(a)},
 				},
 			},
 			sort: &api.List{
 				Items: []runtime.RawExtension{
-					{RawJSON: encodeOrDie(a)},
-					{RawJSON: encodeOrDie(b)},
-					{RawJSON: encodeOrDie(c)},
+					{Raw: encodeOrDie(a)},
+					{Raw: encodeOrDie(b)},
+					{Raw: encodeOrDie(c)},
 				},
 			},
 			field: "{.metadata.name}",

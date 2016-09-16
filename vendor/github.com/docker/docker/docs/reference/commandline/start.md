@@ -5,16 +5,19 @@ description = "The start command description and usage"
 keywords = ["Start, container, stopped"]
 [menu.main]
 parent = "smn_cli"
-weight=1
 +++
 <![end-metadata]-->
 
 # start
 
-    Usage: docker start [OPTIONS] CONTAINER [CONTAINER...]
+```markdown
+Usage:  docker start [OPTIONS] CONTAINER [CONTAINER...]
 
-    Start one or more stopped containers
+Start one or more stopped containers
 
-      -a, --attach=false         Attach STDOUT/STDERR and forward signals
-      -i, --interactive=false    Attach container's STDIN
-
+Options:
+  -a, --attach               Attach STDOUT/STDERR and forward signals
+      --detach-keys string   Override the key sequence for detaching a container
+      --help                 Print usage
+  -i, --interactive          Attach container's STDIN
+```

@@ -15,7 +15,7 @@
 # This file creates a build environment for building and running kubernetes
 # unit and integration tests
 
-FROM golang:1.5.3
+FROM golang:1.6.2
 MAINTAINER  Jeff Lowdermilk <jeffml@google.com>
 
 ENV WORKSPACE               /workspace
@@ -30,6 +30,8 @@ RUN apt-get install -y file
 RUN apt-get install -y libapparmor1
 # netcat is used by integration test scripts.
 RUN apt-get install -y netcat-openbsd
+# jq is used by hack/verify-godep-licenses.sh
+RUN apt-get install -y jq
 RUN mkdir -p /go/src/k8s.io/kubernetes
 RUN ln -s /go/src/k8s.io/kubernetes /workspace/kubernetes
 

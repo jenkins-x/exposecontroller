@@ -7,8 +7,6 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 
 	buildapi "github.com/openshift/origin/pkg/build/api"
-	buildutil "github.com/openshift/origin/pkg/build/util"
-	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 )
 
 // DockerBuildStrategy creates a Docker build using a Docker builder image.
@@ -33,7 +31,6 @@ func (bs *DockerBuildStrategy) CreateBuildPod(build *buildapi.Build) (*kapi.Pod,
 
 	containerEnv := []kapi.EnvVar{
 		{Name: "BUILD", Value: string(data)},
-		{Name: "BUILD_LOGLEVEL", Value: fmt.Sprintf("%d", cmdutil.GetLogLevel())},
 	}
 
 	addSourceEnvVars(build.Spec.Source, &containerEnv)
@@ -45,7 +42,7 @@ func (bs *DockerBuildStrategy) CreateBuildPod(build *buildapi.Build) (*kapi.Pod,
 
 	pod := &kapi.Pod{
 		ObjectMeta: kapi.ObjectMeta{
-			Name:      buildutil.GetBuildPodName(build),
+			Name:      buildapi.GetBuildPodName(build),
 			Namespace: build.Namespace,
 			Labels:    getPodLabels(build),
 		},
@@ -56,7 +53,7 @@ func (bs *DockerBuildStrategy) CreateBuildPod(build *buildapi.Build) (*kapi.Pod,
 					Name:  "docker-build",
 					Image: bs.Image,
 					Env:   containerEnv,
-					Args:  []string{"--loglevel=" + getContainerVerbosity(containerEnv)},
+					Args:  []string{},
 					// TODO: run unprivileged https://github.com/openshift/origin/issues/662
 					SecurityContext: &kapi.SecurityContext{
 						Privileged: &privileged,

@@ -43,16 +43,16 @@ const (
 
 func init() {
 	admission.RegisterPlugin("LimitRanger", func(client clientset.Interface, config io.Reader) (admission.Interface, error) {
-		return NewLimitRanger(client, Limit)
+		return NewLimitRanger(client, &DefaultLimitRangerActions{})
 	})
 }
 
 // limitRanger enforces usage limits on a per resource basis in the namespace
 type limitRanger struct {
 	*admission.Handler
-	client    clientset.Interface
-	limitFunc LimitFunc
-	indexer   cache.Indexer
+	client  clientset.Interface
+	actions LimitRangerActions
+	indexer cache.Indexer
 
 	// liveLookups holds the last few live lookups we've done to help ammortize cost on repeated lookup failures.
 	// This let's us handle the case of latent caches, by looking up actual results for a namespace on cache miss/no results.
@@ -68,14 +68,7 @@ type liveLookupEntry struct {
 
 // Admit admits resources into cluster that do not violate any defined LimitRange in the namespace
 func (l *limitRanger) Admit(a admission.Attributes) (err error) {
-
-	// Ignore all calls to subresources
-	if a.GetSubresource() != "" {
-		return nil
-	}
-
-	// ignore all calls that do not deal with pod resources since that is all this supports now.
-	if a.GetKind() != api.Kind("Pod") {
+	if !l.actions.SupportsAttributes(a) {
 		return nil
 	}
 
@@ -130,7 +123,12 @@ func (l *limitRanger) Admit(a admission.Attributes) (err error) {
 	// ensure it meets each prescribed min/max
 	for i := range items {
 		limitRange := items[i].(*api.LimitRange)
-		err = l.limitFunc(limitRange, a.GetResource().Resource, a.GetObject())
+
+		if !l.actions.SupportsLimit(limitRange) {
+			continue
+		}
+
+		err = l.actions.Limit(limitRange, a.GetResource().Resource, a.GetObject())
 		if err != nil {
 			return admission.NewForbidden(a, err)
 		}
@@ -139,7 +137,7 @@ func (l *limitRanger) Admit(a admission.Attributes) (err error) {
 }
 
 // NewLimitRanger returns an object that enforces limits based on the supplied limit function
-func NewLimitRanger(client clientset.Interface, limitFunc LimitFunc) (admission.Interface, error) {
+func NewLimitRanger(client clientset.Interface, actions LimitRangerActions) (admission.Interface, error) {
 	liveLookupCache, err := lru.New(10000)
 	if err != nil {
 		return nil, err
@@ -155,10 +153,15 @@ func NewLimitRanger(client clientset.Interface, limitFunc LimitFunc) (admission.
 	}
 	indexer, reflector := cache.NewNamespaceKeyedIndexerAndReflector(lw, &api.LimitRange{}, 0)
 	reflector.Run()
+
+	if actions == nil {
+		actions = &DefaultLimitRangerActions{}
+	}
+
 	return &limitRanger{
 		Handler:         admission.NewHandler(admission.Create, admission.Update),
 		client:          client,
-		limitFunc:       limitFunc,
+		actions:         actions,
 		indexer:         indexer,
 		liveLookupCache: liveLookupCache,
 		liveTTL:         time.Duration(30 * time.Second),
@@ -179,17 +182,6 @@ func Max(a int64, b int64) int64 {
 		return a
 	}
 	return b
-}
-
-// Limit enforces resource requirements of incoming resources against enumerated constraints
-// on the LimitRange.  It may modify the incoming object to apply default resource requirements
-// if not specified, and enumerated on the LimitRange
-func Limit(limitRange *api.LimitRange, resourceName string, obj runtime.Object) error {
-	switch resourceName {
-	case "pods":
-		return PodLimitFunc(limitRange, obj.(*api.Pod))
-	}
-	return nil
 }
 
 // defaultContainerResourceRequirements returns the default requirements for a container
@@ -216,45 +208,54 @@ func defaultContainerResourceRequirements(limitRange *api.LimitRange) api.Resour
 	return requirements
 }
 
+// mergeContainerResources handles defaulting all of the resources on a container.
+func mergeContainerResources(container *api.Container, defaultRequirements *api.ResourceRequirements, annotationPrefix string, annotations []string) []string {
+	setRequests := []string{}
+	setLimits := []string{}
+	if container.Resources.Limits == nil {
+		container.Resources.Limits = api.ResourceList{}
+	}
+	if container.Resources.Requests == nil {
+		container.Resources.Requests = api.ResourceList{}
+	}
+	for k, v := range defaultRequirements.Limits {
+		_, found := container.Resources.Limits[k]
+		if !found {
+			container.Resources.Limits[k] = *v.Copy()
+			setLimits = append(setLimits, string(k))
+		}
+	}
+	for k, v := range defaultRequirements.Requests {
+		_, found := container.Resources.Requests[k]
+		if !found {
+			container.Resources.Requests[k] = *v.Copy()
+			setRequests = append(setRequests, string(k))
+		}
+	}
+	if len(setRequests) > 0 {
+		sort.Strings(setRequests)
+		a := strings.Join(setRequests, ", ") + fmt.Sprintf(" request for %s %s", annotationPrefix, container.Name)
+		annotations = append(annotations, a)
+	}
+	if len(setLimits) > 0 {
+		sort.Strings(setLimits)
+		a := strings.Join(setLimits, ", ") + fmt.Sprintf(" limit for %s %s", annotationPrefix, container.Name)
+		annotations = append(annotations, a)
+	}
+	return annotations
+}
+
 // mergePodResourceRequirements merges enumerated requirements with default requirements
 // it annotates the pod with information about what requirements were modified
 func mergePodResourceRequirements(pod *api.Pod, defaultRequirements *api.ResourceRequirements) {
 	annotations := []string{}
 
 	for i := range pod.Spec.Containers {
-		container := &pod.Spec.Containers[i]
-		setRequests := []string{}
-		setLimits := []string{}
-		if container.Resources.Limits == nil {
-			container.Resources.Limits = api.ResourceList{}
-		}
-		if container.Resources.Requests == nil {
-			container.Resources.Requests = api.ResourceList{}
-		}
-		for k, v := range defaultRequirements.Limits {
-			_, found := container.Resources.Limits[k]
-			if !found {
-				container.Resources.Limits[k] = *v.Copy()
-				setLimits = append(setLimits, string(k))
-			}
-		}
-		for k, v := range defaultRequirements.Requests {
-			_, found := container.Resources.Requests[k]
-			if !found {
-				container.Resources.Requests[k] = *v.Copy()
-				setRequests = append(setRequests, string(k))
-			}
-		}
-		if len(setRequests) > 0 {
-			sort.Strings(setRequests)
-			a := strings.Join(setRequests, ", ") + " request for container " + container.Name
-			annotations = append(annotations, a)
-		}
-		if len(setLimits) > 0 {
-			sort.Strings(setLimits)
-			a := strings.Join(setLimits, ", ") + " limit for container " + container.Name
-			annotations = append(annotations, a)
-		}
+		annotations = mergeContainerResources(&pod.Spec.Containers[i], defaultRequirements, "container", annotations)
+	}
+
+	for i := range pod.Spec.InitContainers {
+		annotations = mergeContainerResources(&pod.Spec.InitContainers[i], defaultRequirements, "init container", annotations)
 	}
 
 	if len(annotations) > 0 {
@@ -383,6 +384,38 @@ func sum(inputs []api.ResourceList) api.ResourceList {
 	return result
 }
 
+// DefaultLimitRangerActions is the default implementatation of LimitRangerActions.
+type DefaultLimitRangerActions struct{}
+
+// ensure DefaultLimitRangerActions implements the LimitRangerActions interface.
+var _ LimitRangerActions = &DefaultLimitRangerActions{}
+
+// Limit enforces resource requirements of incoming resources against enumerated constraints
+// on the LimitRange.  It may modify the incoming object to apply default resource requirements
+// if not specified, and enumerated on the LimitRange
+func (d *DefaultLimitRangerActions) Limit(limitRange *api.LimitRange, resourceName string, obj runtime.Object) error {
+	switch resourceName {
+	case "pods":
+		return PodLimitFunc(limitRange, obj.(*api.Pod))
+	}
+	return nil
+}
+
+// SupportsAttributes ignores all calls that do not deal with pod resources since that is
+// all this supports now.  Also ignores any call that has a subresource defined.
+func (d *DefaultLimitRangerActions) SupportsAttributes(a admission.Attributes) bool {
+	if a.GetSubresource() != "" {
+		return false
+	}
+
+	return a.GetKind().GroupKind() == api.Kind("Pod")
+}
+
+// SupportsLimit always returns true.
+func (d *DefaultLimitRangerActions) SupportsLimit(limitRange *api.LimitRange) bool {
+	return true
+}
+
 // PodLimitFunc enforces resource requirements enumerated by the pod against
 // the specified LimitRange.  The pod may be modified to apply default resource
 // requirements if not specified, and enumerated on the LimitRange
@@ -415,9 +448,27 @@ func PodLimitFunc(limitRange *api.LimitRange, pod *api.Pod) error {
 					}
 				}
 			}
+			for j := range pod.Spec.InitContainers {
+				container := &pod.Spec.InitContainers[j]
+				for k, v := range limit.Min {
+					if err := minConstraint(limitType, k, v, container.Resources.Requests, container.Resources.Limits); err != nil {
+						errs = append(errs, err)
+					}
+				}
+				for k, v := range limit.Max {
+					if err := maxConstraint(limitType, k, v, container.Resources.Requests, container.Resources.Limits); err != nil {
+						errs = append(errs, err)
+					}
+				}
+				for k, v := range limit.MaxLimitRequestRatio {
+					if err := limitRequestRatioConstraint(limitType, k, v, container.Resources.Requests, container.Resources.Limits); err != nil {
+						errs = append(errs, err)
+					}
+				}
+			}
 		}
 
-		// enforce pod limits
+		// enforce pod limits on init containers
 		if limitType == api.LimitTypePod {
 			containerRequests, containerLimits := []api.ResourceList{}, []api.ResourceList{}
 			for j := range pod.Spec.Containers {
@@ -427,6 +478,28 @@ func PodLimitFunc(limitRange *api.LimitRange, pod *api.Pod) error {
 			}
 			podRequests := sum(containerRequests)
 			podLimits := sum(containerLimits)
+			for j := range pod.Spec.InitContainers {
+				container := &pod.Spec.InitContainers[j]
+				// take max(sum_containers, any_init_container)
+				for k, v := range container.Resources.Requests {
+					if v2, ok := podRequests[k]; ok {
+						if v.Cmp(v2) > 0 {
+							podRequests[k] = v
+						}
+					} else {
+						podRequests[k] = v
+					}
+				}
+				for k, v := range container.Resources.Limits {
+					if v2, ok := podLimits[k]; ok {
+						if v.Cmp(v2) > 0 {
+							podLimits[k] = v
+						}
+					} else {
+						podLimits[k] = v
+					}
+				}
+			}
 			for k, v := range limit.Min {
 				if err := minConstraint(limitType, k, v, podRequests, podLimits); err != nil {
 					errs = append(errs, err)

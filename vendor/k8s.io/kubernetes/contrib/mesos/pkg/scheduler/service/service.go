@@ -50,6 +50,7 @@ import (
 
 	"k8s.io/kubernetes/contrib/mesos/pkg/election"
 	execcfg "k8s.io/kubernetes/contrib/mesos/pkg/executor/config"
+	"k8s.io/kubernetes/contrib/mesos/pkg/flagutil"
 	"k8s.io/kubernetes/contrib/mesos/pkg/hyperkube"
 	minioncfg "k8s.io/kubernetes/contrib/mesos/pkg/minion/config"
 	"k8s.io/kubernetes/contrib/mesos/pkg/podutil"
@@ -73,9 +74,9 @@ import (
 	"k8s.io/kubernetes/pkg/api/resource"
 	"k8s.io/kubernetes/pkg/client/cache"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	unversionedcore "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/core/unversioned"
 	"k8s.io/kubernetes/pkg/client/record"
 	"k8s.io/kubernetes/pkg/client/restclient"
-	unversionedcore "k8s.io/kubernetes/pkg/client/typed/generated/core/unversioned"
 	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	cloud "k8s.io/kubernetes/pkg/cloudprovider/providers/mesos"
 	controllerfw "k8s.io/kubernetes/pkg/controller/framework"
@@ -495,6 +496,10 @@ func (s *SchedulerServer) prepareExecutorInfo(hks hyperkube.Interface) (*mesos.E
 	appendOptional("host-network-sources", s.kubeletHostNetworkSources)
 	appendOptional("network-plugin", s.kubeletNetworkPluginName)
 
+	// TODO(jdef) this code depends on poorly scoped cadvisor flags, will need refactoring soon
+	appendOptional(flagutil.Cadvisor.HousekeepingInterval.NameValue())
+	appendOptional(flagutil.Cadvisor.GlobalHousekeepingInterval.NameValue())
+
 	log.V(1).Infof("prepared executor command %q with args '%+v'", ci.GetValue(), ci.Arguments)
 
 	// Create mesos scheduler driver.
@@ -869,7 +874,7 @@ func (s *SchedulerServer) bootstrap(hks hyperkube.Interface, sc *schedcfg.Config
 	broadcaster := record.NewBroadcaster()
 	recorder := broadcaster.NewRecorder(api.EventSource{Component: api.DefaultSchedulerName})
 	broadcaster.StartLogging(log.Infof)
-	broadcaster.StartRecordingToSink(&unversionedcore.EventSinkImpl{eventsClient.Events("")})
+	broadcaster.StartRecordingToSink(&unversionedcore.EventSinkImpl{Interface: eventsClient.Events("")})
 
 	lw := cache.NewListWatchFromClient(s.client.CoreClient, "pods", api.NamespaceAll, fields.Everything())
 

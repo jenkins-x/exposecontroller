@@ -27,7 +27,7 @@ import (
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	versioned "k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/diff"
 )
 
 func TestPodLogOptions(t *testing.T) {
@@ -99,7 +99,7 @@ func TestPodLogOptions(t *testing.T) {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(convertedLogOptions, versionedLogOptions) {
-			t.Fatalf("Unexpected deserialization:\n%s", util.ObjectGoPrintSideBySide(versionedLogOptions, convertedLogOptions))
+			t.Fatalf("Unexpected deserialization:\n%s", diff.ObjectGoPrintSideBySide(versionedLogOptions, convertedLogOptions))
 		}
 	}
 
@@ -111,7 +111,7 @@ func TestPodLogOptions(t *testing.T) {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(convertedLogOptions, unversionedLogOptions) {
-			t.Fatalf("Unexpected deserialization:\n%s", util.ObjectGoPrintSideBySide(unversionedLogOptions, convertedLogOptions))
+			t.Fatalf("Unexpected deserialization:\n%s", diff.ObjectGoPrintSideBySide(unversionedLogOptions, convertedLogOptions))
 		}
 	}
 }
@@ -127,7 +127,7 @@ func TestPodSpecConversion(t *testing.T) {
 		ServiceAccountName: name,
 	}
 	v := versioned.PodSpec{}
-	if err := api.Scheme.Convert(i, &v); err != nil {
+	if err := api.Scheme.Convert(i, &v, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if v.ServiceAccountName != name {
@@ -152,7 +152,7 @@ func TestPodSpecConversion(t *testing.T) {
 	}
 	for k, v := range testCases {
 		got := api.PodSpec{}
-		err := api.Scheme.Convert(v, &got)
+		err := api.Scheme.Convert(v, &got, nil)
 		if err != nil {
 			t.Fatalf("unexpected error for case %d: %v", k, err)
 		}
@@ -204,9 +204,9 @@ func TestResourceListConversion(t *testing.T) {
 		},
 	}
 
-	output := api.ResourceList{}
 	for i, test := range tests {
-		err := api.Scheme.Convert(&test.input, &output)
+		output := api.ResourceList{}
+		err := api.Scheme.Convert(&test.input, &output, nil)
 		if err != nil {
 			t.Fatalf("unexpected error for case %d: %v", i, err)
 		}

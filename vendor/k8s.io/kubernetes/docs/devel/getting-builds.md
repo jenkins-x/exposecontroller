@@ -5,14 +5,14 @@
 
 # Getting Kubernetes Builds
 
-You can use [hack/get-build.sh](http://releases.k8s.io/release-1.2/hack/get-build.sh) to or use as a reference on how to get the most recent builds with curl. With `get-build.sh` you can grab the most recent stable build, the most recent release candidate, or the most recent build to pass our ci and gce e2e tests (essentially a nightly build).
+You can use [hack/get-build.sh](http://releases.k8s.io/release-1.3/hack/get-build.sh) to or use as a reference on how to get the most recent builds with curl. With `get-build.sh` you can grab the most recent stable build, the most recent release candidate, or the most recent build to pass our ci and gce e2e tests (essentially a nightly build).
 
 Run `./hack/get-build.sh -h` for its usage.
 
-For example, to get a build at a specific version (v1.0.2):
+For example, to get a build at a specific version (v1.1.1):
 
 ```console
-./hack/get-build.sh v1.0.2
+./hack/get-build.sh v1.1.1
 ```
 
 Alternatively, to get the latest stable release:
@@ -36,6 +36,14 @@ gsutil ls gs://kubernetes-release/ci/v0.20.0-29-g29a55cc/ # list the contents of
 gsutil ls gs://kubernetes-release/release                 # list all official releases and rcs
 ```
 
+## Install `gsutil`
+
+Example installation:
+
+```console
+$ curl -sSL https://storage.googleapis.com/pub/gsutil.tar.gz | sudo tar -xz -C /usr/local/src
+$ sudo ln -s /usr/local/src/gsutil/gsutil /usr/bin/gsutil
+```
 
 
 

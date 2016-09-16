@@ -14,19 +14,20 @@ import (
 	kapierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/client/restclient"
+	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/fields"
 	kcmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
+	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/interrupt"
 	"k8s.io/kubernetes/pkg/util/term"
-	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/watch"
 
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
+	generateapp "github.com/openshift/origin/pkg/generate/app"
 	imageapi "github.com/openshift/origin/pkg/image/api"
-	"k8s.io/kubernetes/pkg/runtime"
 )
 
 type DebugOptions struct {
@@ -41,17 +42,20 @@ type DebugOptions struct {
 	Filename   string
 	Timeout    time.Duration
 
-	Command         []string
-	Annotations     map[string]string
-	AsRoot          bool
-	KeepLabels      bool // TODO: evaluate selecting the right labels automatically
-	KeepAnnotations bool
-	KeepLiveness    bool
-	KeepReadiness   bool
-	OneContainer    bool
-	NodeName        string
-	AddEnv          []kapi.EnvVar
-	RemoveEnv       []string
+	Command            []string
+	Annotations        map[string]string
+	AsRoot             bool
+	AsNonRoot          bool
+	AsUser             int64
+	KeepLabels         bool // TODO: evaluate selecting the right labels automatically
+	KeepAnnotations    bool
+	KeepLiveness       bool
+	KeepReadiness      bool
+	KeepInitContainers bool
+	OneContainer       bool
+	NodeName           string
+	AddEnv             []kapi.EnvVar
+	RemoveEnv          []string
 }
 
 const (
@@ -70,18 +74,25 @@ liveness checks disabled. If you just want to run a command, add '--' and a comm
 run. Passing a command will not create a TTY or send STDIN by default. Other flags are
 supported for altering the container or pod in common ways.
 
+A common problem running containers is a security policy that prohibits you from running
+as a root user on the cluster. You can use this command to test running a pod as
+non-root (with --as-user) or to run a non-root pod as root (with --as-root).
+
 The debug pod is deleted when the the remote command completes or the user interrupts
 the shell.`
 
 	debugExample = `
   # Debug a currently running deployment
-  $ %[1]s dc/test
+  %[1]s dc/test
+
+  # Test running a deployment as a non-root user
+  %[1]s dc/test --as-user=1000000
 
   # Debug a specific failing container by running the env command in the 'second' container
-  $ %[1]s dc/test -c second -- /bin/env
+  %[1]s dc/test -c second -- /bin/env
 
   # See the pod that would be created to debug
-  $ %[1]s dc/test -o yaml`
+  %[1]s dc/test -o yaml`
 
 	debugPodLabelName = "debug.openshift.io/name"
 
@@ -92,13 +103,15 @@ the shell.`
 // NewCmdDebug creates a command for debugging pods.
 func NewCmdDebug(fullName string, f *clientcmd.Factory, in io.Reader, out, errout io.Writer) *cobra.Command {
 	options := &DebugOptions{
-		Timeout: 30 * time.Second,
+		Timeout: 15 * time.Minute,
 		Attach: kcmd.AttachOptions{
-			In:    in,
-			Out:   out,
-			Err:   errout,
-			TTY:   true,
-			Stdin: true,
+			StreamOptions: kcmd.StreamOptions{
+				In:    in,
+				Out:   out,
+				Err:   errout,
+				TTY:   true,
+				Stdin: true,
+			},
 
 			Attach: &kcmd.DefaultRemoteAttach{},
 		},
@@ -106,7 +119,7 @@ func NewCmdDebug(fullName string, f *clientcmd.Factory, in io.Reader, out, errou
 	}
 
 	cmd := &cobra.Command{
-		Use:     "debug RESOURCE/NAME [ENV1=VAL1 ...] [-c CONTAINER] [-- COMMAND]",
+		Use:     "debug RESOURCE/NAME [ENV1=VAL1 ...] [-c CONTAINER] [options] [-- COMMAND]",
 		Short:   "Launch a new instance of a pod for debugging",
 		Long:    debugLong,
 		Example: fmt.Sprintf(debugExample, fmt.Sprintf("%s debug", fullName)),
@@ -118,7 +131,7 @@ func NewCmdDebug(fullName string, f *clientcmd.Factory, in io.Reader, out, errou
 	}
 
 	// TODO: when T is deprecated use the printer, but keep these hidden
-	cmd.Flags().StringP("output", "o", "", "Output format. One of: json|yaml|wide|name|go-template=...|go-template-file=...|jsonpath=...|jsonpath-file=... See golang template [http://golang.org/pkg/text/template/#pkg-overview] and jsonpath template [http://releases.k8s.io/HEAD/docs/user-guide/jsonpath.md].")
+	cmd.Flags().StringP("output", "o", "", "Output format. One of: json|yaml|wide|name|go-template=...|go-template-file=...|jsonpath=...|jsonpath-file=... See golang template [http://golang.org/pkg/text/template/#pkg-overview] and jsonpath template [http://kubernetes.io/docs/user-guide/jsonpath/].")
 	cmd.Flags().String("output-version", "", "Output the formatted object with the given version (default api-version).")
 	cmd.Flags().String("template", "", "Template string or path to template file to use when -o=go-template, -o=go-template-file. The template format is golang templates [http://golang.org/pkg/text/template/#pkg-overview].")
 	cmd.MarkFlagFilename("template")
@@ -136,10 +149,12 @@ func NewCmdDebug(fullName string, f *clientcmd.Factory, in io.Reader, out, errou
 	cmd.Flags().StringVarP(&options.Attach.ContainerName, "container", "c", "", "Container name; defaults to first container")
 	cmd.Flags().BoolVar(&options.KeepAnnotations, "keep-annotations", false, "Keep the original pod annotations")
 	cmd.Flags().BoolVar(&options.KeepLiveness, "keep-liveness", false, "Keep the original pod liveness probes")
+	cmd.Flags().BoolVar(&options.KeepInitContainers, "keep-init-containers", true, "Run the init containers for the pod. Defaults to true.")
 	cmd.Flags().BoolVar(&options.KeepReadiness, "keep-readiness", false, "Keep the original pod readiness probes")
 	cmd.Flags().BoolVar(&options.OneContainer, "one-container", false, "Run only the selected container, remove all others")
 	cmd.Flags().StringVar(&options.NodeName, "node-name", "", "Set a specific node to run on - by default the pod will run on any valid node")
 	cmd.Flags().BoolVar(&options.AsRoot, "as-root", false, "Try to run the container as the root user")
+	cmd.Flags().Int64Var(&options.AsUser, "as-user", -1, "Try to run the container as a specific user UID (note: admins may limit your ability to use this flag)")
 
 	cmd.Flags().StringVarP(&options.Filename, "filename", "f", "", "Filename or URL to file to read a template")
 	cmd.MarkFlagFilename("filename", "yaml", "yml", "json")
@@ -164,6 +179,9 @@ func (o *DebugOptions) Complete(cmd *cobra.Command, f *clientcmd.Factory, args [
 		return kcmdutil.UsageError(cmd, "you may not specify -t and -T together")
 	case o.ForceTTY:
 		o.Attach.TTY = true
+	// since ForceTTY is defaulted to false, check if user specifically passed in "=false" flag
+	case !o.ForceTTY && cmd.Flags().Changed("tty"):
+		o.Attach.TTY = false
 	case o.DisableTTY:
 		o.Attach.TTY = false
 	// don't default TTY to true if a command is passed
@@ -192,14 +210,14 @@ func (o *DebugOptions) Complete(cmd *cobra.Command, f *clientcmd.Factory, args [
 		return err
 	}
 
-	mapper, typer := f.Object()
+	mapper, typer := f.Object(false)
 	b := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), kapi.Codecs.UniversalDecoder()).
 		NamespaceParam(cmdNamespace).DefaultNamespace().
 		SingleResourceType().
-		ResourceTypeOrNameArgs(true, resources...).
+		ResourceNames("pods", resources...).
 		Flatten()
 	if len(o.Filename) > 0 {
-		b.FilenameParam(explicit, o.Filename)
+		b.FilenameParam(explicit, false, o.Filename)
 	}
 
 	o.AddEnv, o.RemoveEnv, err = cmdutil.ParseEnv(envArgs, nil)
@@ -217,18 +235,23 @@ func (o *DebugOptions) Complete(cmd *cobra.Command, f *clientcmd.Factory, args [
 	}
 
 	template, err := f.ApproximatePodTemplateForObject(infos[0].Object)
-	if err != nil || template == nil {
+	if err != nil && template == nil {
 		return fmt.Errorf("cannot debug %s: %v", infos[0].Name, err)
+	}
+	if err != nil {
+		glog.V(4).Infof("Unable to get exact template, but continuing with fallback: %v", err)
 	}
 	pod := &kapi.Pod{
 		ObjectMeta: template.ObjectMeta,
 		Spec:       template.Spec,
 	}
-	pod.Name, pod.Namespace = infos[0].Name, infos[0].Namespace
+	pod.Name, pod.Namespace = fmt.Sprintf("%s-debug", generateapp.MakeSimpleName(infos[0].Name)), infos[0].Namespace
 	o.Attach.Pod = pod
 
+	o.AsNonRoot = !o.AsRoot && cmd.Flag("as-root").Changed
+
 	if len(o.Attach.ContainerName) == 0 && len(pod.Spec.Containers) > 0 {
-		glog.V(4).Infof("defaulting container name to %s", pod.Spec.Containers[0].Name)
+		glog.V(4).Infof("Defaulting container name to %s", pod.Spec.Containers[0].Name)
 		o.Attach.ContainerName = pod.Spec.Containers[0].Name
 	}
 
@@ -238,7 +261,7 @@ func (o *DebugOptions) Complete(cmd *cobra.Command, f *clientcmd.Factory, args [
 	output := kcmdutil.GetFlagString(cmd, "output")
 	if len(output) != 0 {
 		o.Print = func(pod *kapi.Pod, out io.Writer) error {
-			return f.PrintObject(cmd, pod, out)
+			return f.PrintObject(cmd, mapper, pod, out)
 		}
 	}
 
@@ -260,6 +283,9 @@ func (o DebugOptions) Validate() error {
 	if len(names) == 0 {
 		return fmt.Errorf("the provided pod must have at least one container")
 	}
+	if (o.AsRoot || o.AsNonRoot) && o.AsUser > 0 {
+		return fmt.Errorf("you may not specify --as-root and --as-user=%d at the same time", o.AsUser)
+	}
 	if len(o.Attach.ContainerName) == 0 {
 		return fmt.Errorf("you must provide a container name to debug")
 	}
@@ -267,106 +293,6 @@ func (o DebugOptions) Validate() error {
 		return fmt.Errorf("the container %q is not a valid container name; must be one of %v", o.Attach.ContainerName, names)
 	}
 	return nil
-}
-
-// WatchConditionFunc returns true if the condition has been reached, false if it has not been reached yet,
-// or an error if the condition cannot be checked and should terminate.
-type WatchConditionFunc func(event watch.Event) (bool, error)
-
-// Until reads items from the watch until each provided condition succeeds, and then returns the last watch
-// encountered. The first condition that returns an error terminates the watch (and the event is also returned).
-// If no event has been received, the returned event will be nil.
-// TODO: move to pkg/watch upstream
-func Until(timeout time.Duration, watcher watch.Interface, conditions ...WatchConditionFunc) (*watch.Event, error) {
-	ch := watcher.ResultChan()
-	defer watcher.Stop()
-	var after <-chan time.Time
-	if timeout > 0 {
-		after = time.After(timeout)
-	} else {
-		ch := make(chan time.Time)
-		close(ch)
-		after = ch
-	}
-	var lastEvent *watch.Event
-	for _, condition := range conditions {
-		for {
-			select {
-			case event, ok := <-ch:
-				if !ok {
-					return lastEvent, wait.ErrWaitTimeout
-				}
-				lastEvent = &event
-				// TODO: check for watch expired error and retry watch from latest point?
-				done, err := condition(event)
-				if err != nil {
-					return lastEvent, err
-				}
-				if done {
-					return lastEvent, nil
-				}
-			case <-after:
-				return lastEvent, wait.ErrWaitTimeout
-			}
-		}
-	}
-	return lastEvent, wait.ErrWaitTimeout
-}
-
-// ErrPodCompleted is returned by PodRunning or PodContainerRunning to indicate that
-// the pod has already reached completed state.
-var ErrPodCompleted = fmt.Errorf("pod ran to completion")
-
-// TODO: move to pkg/client/conditions.go upstream
-//
-// Example of a running condition, will be used elsewhere
-//
-// PodRunning returns true if the pod is running, false if the pod has not yet reached running state,
-// returns ErrPodCompleted if the pod has run to completion, or an error in any other case.
-// func PodRunning(event watch.Event) (bool, error) {
-// 	switch event.Type {
-// 	case watch.Deleted:
-// 		return false, kapierrors.NewNotFound(unversioned.GroupResource{Resource: "pods"}, "")
-// 	}
-// 	switch t := event.Object.(type) {
-// 	case *kapi.Pod:
-// 		switch t.Status.Phase {
-// 		case kapi.PodRunning:
-// 			return true, nil
-// 		case kapi.PodFailed, kapi.PodSucceeded:
-// 			return false, ErrPodCompleted
-// 		}
-// 	}
-// 	return false, nil
-// }
-
-// PodContainerRunning returns false until the named container has ContainerStatus running (at least once),
-// and will return an error if the pod is deleted, runs to completion, or the container pod is not available.
-func PodContainerRunning(containerName string) WatchConditionFunc {
-	return func(event watch.Event) (bool, error) {
-		switch event.Type {
-		case watch.Deleted:
-			return false, kapierrors.NewNotFound(unversioned.GroupResource{Resource: "pods"}, "")
-		}
-		switch t := event.Object.(type) {
-		case *kapi.Pod:
-			switch t.Status.Phase {
-			case kapi.PodRunning, kapi.PodPending:
-			case kapi.PodFailed, kapi.PodSucceeded:
-				return false, ErrPodCompleted
-			default:
-				return false, nil
-			}
-			for _, s := range t.Status.ContainerStatuses {
-				if s.Name != containerName {
-					continue
-				}
-				return s.State.Running != nil, nil
-			}
-			return false, nil
-		}
-		return false, nil
-	}
 }
 
 // SingleObject returns a ListOptions for watching a single object.
@@ -404,12 +330,19 @@ func (o *DebugOptions) Debug() error {
 	o.Attach.InterruptParent = interrupt.New(
 		func(os.Signal) { os.Exit(1) },
 		func() {
-			fmt.Fprintf(o.Attach.Err, "\nRemoving debug pod ...\n")
+			stderr := o.Attach.Err
+			if stderr == nil {
+				stderr = os.Stderr
+			}
+			fmt.Fprintf(stderr, "\nRemoving debug pod ...\n")
 			if err := o.Attach.Client.Pods(pod.Namespace).Delete(pod.Name, kapi.NewDeleteOptions(0)); err != nil {
-				fmt.Fprintf(o.Attach.Err, "error: unable to delete the debug pod %q: %v", pod.Name, err)
+				if !kapierrors.IsNotFound(err) {
+					fmt.Fprintf(stderr, "error: unable to delete the debug pod %q: %v\n", pod.Name, err)
+				}
 			}
 		},
 	)
+
 	glog.V(5).Infof("Created attach arguments: %#v", o.Attach)
 	return o.Attach.InterruptParent.Run(func() error {
 		w, err := o.Attach.Client.Pods(pod.Namespace).Watch(SingleObject(pod.ObjectMeta))
@@ -417,9 +350,17 @@ func (o *DebugOptions) Debug() error {
 			return err
 		}
 		fmt.Fprintf(o.Attach.Err, "Waiting for pod to start ...\n")
-		switch _, err := Until(o.Timeout, w, PodContainerRunning(o.Attach.ContainerName)); {
-		// switch to logging output
-		case err == ErrPodCompleted, !o.Attach.Stdin:
+
+		switch containerRunningEvent, err := watch.Until(o.Timeout, w, kclient.PodContainerRunning(o.Attach.ContainerName)); {
+		// api didn't error right away but the pod wasn't even created
+		case kapierrors.IsNotFound(err):
+			msg := fmt.Sprintf("unable to create the debug pod %q", pod.Name)
+			if len(o.NodeName) > 0 {
+				msg += fmt.Sprintf(" on node %q", o.NodeName)
+			}
+			return fmt.Errorf(msg)
+			// switch to logging output
+		case err == kclient.ErrPodCompleted, err == kclient.ErrContainerTerminated, !o.Attach.Stdin:
 			_, err := kcmd.LogsOptions{
 				Object: pod,
 				Options: &kapi.PodLogOptions{
@@ -434,6 +375,12 @@ func (o *DebugOptions) Debug() error {
 		case err != nil:
 			return err
 		default:
+			// TODO this doesn't do us much good for remote debugging sessions, but until we get a local port
+			// set up to proxy, this is what we've got.
+			if podWithStatus, ok := containerRunningEvent.Object.(*kapi.Pod); ok {
+				fmt.Fprintf(o.Attach.Err, "Pod IP: %s\n", podWithStatus.Status.PodIP)
+			}
+
 			// TODO: attach can race with pod completion, allow attach to switch to logs
 			return o.Attach.Run()
 		}
@@ -443,6 +390,10 @@ func (o *DebugOptions) Debug() error {
 // transformPodForDebug alters the input pod to be debuggable
 func (o *DebugOptions) transformPodForDebug(annotations map[string]string) (*kapi.Pod, []string) {
 	pod := o.Attach.Pod
+
+	if !o.KeepInitContainers {
+		pod.Spec.InitContainers = nil
+	}
 
 	// reset the container
 	container := containerForName(pod, o.Attach.ContainerName)
@@ -491,13 +442,20 @@ func (o *DebugOptions) transformPodForDebug(annotations map[string]string) (*kap
 	}
 	container.Env = newEnv
 
-	if o.AsRoot {
-		if container.SecurityContext == nil {
-			container.SecurityContext = &kapi.SecurityContext{}
-		}
-		container.SecurityContext.RunAsNonRoot = nil
+	if container.SecurityContext == nil {
+		container.SecurityContext = &kapi.SecurityContext{}
+	}
+	switch {
+	case o.AsNonRoot:
+		b := true
+		container.SecurityContext.RunAsNonRoot = &b
+	case o.AsRoot:
 		zero := int64(0)
 		container.SecurityContext.RunAsUser = &zero
+		container.SecurityContext.RunAsNonRoot = nil
+	case o.AsUser != -1:
+		container.SecurityContext.RunAsUser = &o.AsUser
+		container.SecurityContext.RunAsNonRoot = nil
 	}
 
 	if o.OneContainer {
@@ -515,17 +473,15 @@ func (o *DebugOptions) transformPodForDebug(annotations map[string]string) (*kap
 		if pod.Labels == nil {
 			pod.Labels = make(map[string]string)
 		}
-		pod.Labels[debugPodLabelName] = pod.Name
 	} else {
-		pod.Labels = map[string]string{debugPodLabelName: pod.Name}
+		pod.Labels = map[string]string{}
 	}
 	// always clear the NodeName
 	pod.Spec.NodeName = o.NodeName
 
 	pod.ResourceVersion = ""
 	pod.Spec.RestartPolicy = kapi.RestartPolicyNever
-	// TODO: shorten segments, make incrementing?
-	pod.Name = fmt.Sprintf("%s-debug", pod.Name)
+
 	pod.Status = kapi.PodStatus{}
 	pod.UID = ""
 	pod.CreationTimestamp = unversioned.Time{}
@@ -563,10 +519,14 @@ func (o *DebugOptions) createPod(pod *kapi.Pod) (*kapi.Pod, error) {
 
 func containerForName(pod *kapi.Pod, name string) *kapi.Container {
 	for i, c := range pod.Spec.Containers {
-		if c.Name != name {
-			continue
+		if c.Name == name {
+			return &pod.Spec.Containers[i]
 		}
-		return &pod.Spec.Containers[i]
+	}
+	for i, c := range pod.Spec.InitContainers {
+		if c.Name == name {
+			return &pod.Spec.InitContainers[i]
+		}
 	}
 	return nil
 }

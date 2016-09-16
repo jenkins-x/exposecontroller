@@ -25,9 +25,23 @@ KUBE_ROOT=$(dirname "${BASH_SOURCE}")/../..
 
 export KUBECTL KUBE_CONFIG_FILE
 
-source "${KUBE_ROOT}/cluster/kube-env.sh"
-source "${KUBE_ROOT}/cluster/${KUBERNETES_PROVIDER}/util.sh"
+source "${KUBE_ROOT}/cluster/kube-util.sh"
 
 prepare-e2e
 
-${KUBECTL} version
+if [[ "${FEDERATION:-}" == "true" ]];then
+    FEDERATION_NAMESPACE=${FEDERATION_NAMESPACE:-federation}
+    #TODO(colhom): the last cluster that was created in the loop above is the current context.
+    # Hence, it will be the cluster that hosts the federated components.
+    # In the future, we will want to loop through the all the federated contexts,
+    # select each one and call federated-up
+    for zone in ${E2E_ZONES};do
+	(
+	    set-federation-zone-vars "$zone"
+	    printf "\n\tChecking version for $OVERRIDE_CONTEXT\n"
+	    ${KUBECTL} --context="$OVERRIDE_CONTEXT" version
+	)
+    done
+else
+    ${KUBECTL} version
+fi

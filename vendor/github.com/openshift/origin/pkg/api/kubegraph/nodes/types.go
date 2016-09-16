@@ -5,6 +5,8 @@ import (
 	"reflect"
 
 	kapi "k8s.io/kubernetes/pkg/api"
+	kapps "k8s.io/kubernetes/pkg/apis/apps"
+	"k8s.io/kubernetes/pkg/apis/autoscaling"
 
 	osgraph "github.com/openshift/origin/pkg/api/graph"
 )
@@ -18,6 +20,9 @@ var (
 	ReplicationControllerSpecNodeKind = reflect.TypeOf(kapi.ReplicationControllerSpec{}).Name()
 	ServiceAccountNodeKind            = reflect.TypeOf(kapi.ServiceAccount{}).Name()
 	SecretNodeKind                    = reflect.TypeOf(kapi.Secret{}).Name()
+	HorizontalPodAutoscalerNodeKind   = reflect.TypeOf(autoscaling.HorizontalPodAutoscaler{}).Name()
+	PetSetNodeKind                    = reflect.TypeOf(kapps.PetSet{}).Name()
+	PetSetSpecNodeKind                = reflect.TypeOf(kapps.PetSetSpec{}).Name()
 )
 
 func ServiceNodeName(o *kapi.Service) osgraph.UniqueName {
@@ -106,7 +111,13 @@ func ReplicationControllerNodeName(o *kapi.ReplicationController) osgraph.Unique
 
 type ReplicationControllerNode struct {
 	osgraph.Node
-	*kapi.ReplicationController
+	ReplicationController *kapi.ReplicationController
+
+	IsFound bool
+}
+
+func (n ReplicationControllerNode) Found() bool {
+	return n.IsFound
 }
 
 func (n ReplicationControllerNode) Object() interface{} {
@@ -131,8 +142,8 @@ func ReplicationControllerSpecNodeName(o *kapi.ReplicationControllerSpec, ownerN
 
 type ReplicationControllerSpecNode struct {
 	osgraph.Node
-	*kapi.ReplicationControllerSpec
-	Namespace string
+	ReplicationControllerSpec *kapi.ReplicationControllerSpec
+	Namespace                 string
 
 	OwnerName osgraph.UniqueName
 }
@@ -233,4 +244,82 @@ func (n SecretNode) String() string {
 
 func (*SecretNode) Kind() string {
 	return SecretNodeKind
+}
+
+func HorizontalPodAutoscalerNodeName(o *autoscaling.HorizontalPodAutoscaler) osgraph.UniqueName {
+	return osgraph.GetUniqueRuntimeObjectNodeName(HorizontalPodAutoscalerNodeKind, o)
+}
+
+type HorizontalPodAutoscalerNode struct {
+	osgraph.Node
+	HorizontalPodAutoscaler *autoscaling.HorizontalPodAutoscaler
+}
+
+func (n HorizontalPodAutoscalerNode) Object() interface{} {
+	return n.HorizontalPodAutoscaler
+}
+
+func (n HorizontalPodAutoscalerNode) String() string {
+	return string(n.UniqueName())
+}
+
+func (*HorizontalPodAutoscalerNode) Kind() string {
+	return HorizontalPodAutoscalerNodeKind
+}
+
+func (n HorizontalPodAutoscalerNode) UniqueName() osgraph.UniqueName {
+	return HorizontalPodAutoscalerNodeName(n.HorizontalPodAutoscaler)
+}
+
+func PetSetNodeName(o *kapps.PetSet) osgraph.UniqueName {
+	return osgraph.GetUniqueRuntimeObjectNodeName(PetSetNodeKind, o)
+}
+
+type PetSetNode struct {
+	osgraph.Node
+	PetSet *kapps.PetSet
+}
+
+func (n PetSetNode) Object() interface{} {
+	return n.PetSet
+}
+
+func (n PetSetNode) String() string {
+	return string(n.UniqueName())
+}
+
+func (n PetSetNode) UniqueName() osgraph.UniqueName {
+	return PetSetNodeName(n.PetSet)
+}
+
+func (*PetSetNode) Kind() string {
+	return PetSetNodeKind
+}
+
+func PetSetSpecNodeName(o *kapps.PetSetSpec, ownerName osgraph.UniqueName) osgraph.UniqueName {
+	return osgraph.UniqueName(fmt.Sprintf("%s|%v", PetSetSpecNodeKind, ownerName))
+}
+
+type PetSetSpecNode struct {
+	osgraph.Node
+	PetSetSpec *kapps.PetSetSpec
+	Namespace  string
+
+	OwnerName osgraph.UniqueName
+}
+
+func (n PetSetSpecNode) Object() interface{} {
+	return n.PetSetSpec
+}
+
+func (n PetSetSpecNode) String() string {
+	return string(n.UniqueName())
+}
+
+func (n PetSetSpecNode) UniqueName() osgraph.UniqueName {
+	return PetSetSpecNodeName(n.PetSetSpec, n.OwnerName)
+}
+
+func (*PetSetSpecNode) Kind() string {
+	return PetSetSpecNodeKind
 }

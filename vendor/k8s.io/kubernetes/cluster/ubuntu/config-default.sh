@@ -20,11 +20,12 @@
 # And separated with blank space like <user_1@ip_1> <user_2@ip_2> <user_3@ip_3> 
 export nodes=${nodes:-"vcap@10.10.103.250 vcap@10.10.103.162 vcap@10.10.103.223"}
 
-# Define all your nodes role: a(master) or i(minion) or ai(both master and minion), must be the order same 
-role=${roles:-"ai i i"}
+# Define all your nodes role: a(master) or i(minion) or ai(both master and minion),
+# Roles must be the same order with the nodes.
+roles=${roles:-"ai i i"}
 # If it practically impossible to set an array as an environment variable
 # from a script, so assume variable is a string then convert it to an array
-export roles=($role)
+export roles_array=($roles)
 
 # Define minion numbers
 export NUM_NODES=${NUM_NODES:-3}
@@ -66,7 +67,8 @@ export FLANNEL_OTHER_NET_CONFIG
 FLANNEL_OTHER_NET_CONFIG=''
 
 # Admission Controllers to invoke prior to persisting objects in cluster
-export ADMISSION_CONTROL=NamespaceLifecycle,LimitRanger,ServiceAccount,ResourceQuota,SecurityContextDeny
+# If we included ResourceQuota, we should keep it at the end of the list to prevent incremeting quota usage prematurely.
+export ADMISSION_CONTROL=NamespaceLifecycle,LimitRanger,ServiceAccount,SecurityContextDeny,ResourceQuota
 
 # Path to the config file or directory of files of kubelet
 export KUBELET_CONFIG=${KUBELET_CONFIG:-""}
@@ -107,7 +109,7 @@ ENABLE_CLUSTER_UI="${KUBE_ENABLE_CLUSTER_UI:-true}"
 #RUNTIME_CONFIG=""
 
 # Optional: Add http or https proxy when download easy-rsa.
-# Add envitonment variable separated with blank space like "http_proxy=http://10.x.x.x:8080 https_proxy=https://10.x.x.x:8443"
+# Add environment variable separated with blank space like "http_proxy=http://10.x.x.x:8080 https_proxy=https://10.x.x.x:8443"
 PROXY_SETTING=${PROXY_SETTING:-""}
 
 DEBUG=${DEBUG:-"false"}
