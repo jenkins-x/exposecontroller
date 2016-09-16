@@ -28,13 +28,13 @@ You also need to specify an `expose-rule` type that you want the __exposecontrol
 ### example
 
 ### Kubernetes
-```
+```yaml
 cat <<EOF | kubectl create -f -
 apiVersion: "v1"
 data:
-  expose-rule: "ingress"
-  domain: "replace.me.io"
-  watch-rate-milliseconds: "5000"
+  config.yml: |-
+    exposer: Ingress
+    domain: replace.me.io
 kind: "ConfigMap"
 metadata:
   name: "exposecontroller"
@@ -43,13 +43,13 @@ EOF
 
 ### OpenShift
 
-```
+```yaml
 cat <<EOF | oc create -f -
 apiVersion: "v1"
 data:
-  expose-rule: "route"
-  domain: "replace.me.io"
-  watch-rate-milliseconds: "5000"
+  config.yml: |-
+    exposer: Route
+    domain: replace.me.io
 kind: "ConfigMap"
 metadata:
   name: "exposecontroller"
@@ -83,48 +83,33 @@ __exposecontroller__ will use your `expose-rule` in the configmap above to autom
 
 ## Building
 
- * install [go version 1.5.1 or later](https://golang.org/doc/install)
+ * install [go version 1.7.1 or later](https://golang.org/doc/install)
  * install [glide](https://github.com/Masterminds/glide#install)
  * type the following:
- * when using minikube or minishift expose the docker daemon to build the __exposecontroller__ image and run inside kubernetes.  e.g  `export DOCKER_API_VERSION=1.23 && eval $(minikube docker-env)`
+ * when using minikube or minishift expose the docker daemon to build the __exposecontroller__ image and run inside kubernetes.  e.g  `eval $(minikube docker-env)`
 
 ```
-cd $GOPATH
-mkdir -p src/github.com/fabric8io/
-cd src/github.com/fabric8io/
-git clone https://github.com/fabric8io/exposecontroller.git
-cd exposecontroller
+git clone git://github.com/fabric8io/exposecontroller.git $GOPATH/src/github.com/fabric8io/exposecontroller
+cd $GOPATH/src/github.com/fabric8io/exposecontroller
 
-make bootstrap
+make
 ```
 
 ### Run locally
 
-After setting some test env vars you'll need to build the binary and run it.  You may need to copy a token and cert from a pod to you local filesystem under `/var/run/secrets/kubernetes.io/serviceaccount/`.
+Make sure you've got your kube config file set up properly (remember to `oc login` if you're using OpenShift).
 
-    export KUBERNETES_SERVICE_HOST=192.168.99.100
-    export KUBERNETES_SERVICE_PORT=443
-    export KUBERNETES_NAMESPACE=default
-    rm -rf bin/exposecontroller && make && ./bin/exposecontroller
+    make && ./bin/exposecontroller
 
 
 ### Run on Kubernetes or OpenShift
 
- * build the binary
-
-    `make` 
-     
-    (currently not currently working on OSX so use)
-     
-    `GOOS=linux GOARCH=386 go build -o bin/exposecontroller exposecontroller.go`
-
- * build docker image
-
-     `docker build -t fabric8/exposecontroller:test .`
-
- * run in kubernetes
-
-     `kubectl run exposecontroller --image fabric8/exposecontroller:test `
+* build the binary
+`make`
+* build docker image
+`make docker`
+* run in kubernetes
+`kubectl create -f examples/config-map.yml -f examples/deployment.yml`
 
 # Future
 
