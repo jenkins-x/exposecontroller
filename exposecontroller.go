@@ -51,12 +51,17 @@ func main() {
 		glog.Fatalf("failed to create client: %s", err)
 	}
 
+	restClientConfig, err := factory.ClientConfig()
+	if err != nil {
+		glog.Fatalf("failed to create REST client config", err)
+	}
+
 	controllerConfig, err := controller.LoadFile(*configFile)
 	if err != nil {
 		glog.Fatalf("%s", err)
 	}
 
-	c, err := controller.NewController(kubeClient, factory.JSONEncoder(), *resyncPeriod, api.NamespaceAll, controllerConfig)
+	c, err := controller.NewController(kubeClient, restClientConfig, factory.JSONEncoder(), *resyncPeriod, api.NamespaceAll, controllerConfig)
 	if err != nil {
 		glog.Fatalf("%s", err)
 	}

@@ -4,16 +4,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fabric8io/exposecontroller/exposestrategy"
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
+
+	oclient "github.com/openshift/origin/pkg/client"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/record"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/watch"
+
+	"github.com/fabric8io/exposecontroller/exposestrategy"
 )
 
 type Controller struct {
@@ -31,6 +35,7 @@ type Controller struct {
 
 func NewController(
 	kubeClient *client.Client,
+	restClientConfig *restclient.Config,
 	encoder runtime.Encoder,
 	resyncPeriod time.Duration, namespace string, config *Config) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
@@ -66,8 +71,18 @@ func NewController(
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create ingress expose strategy")
 		}
+	case "route":
+		ocfg := *restClientConfig
+		ocfg.APIPath = ""
+		ocfg.GroupVersion = nil
+		ocfg.NegotiatedSerializer = nil
+		oc, _ := oclient.New(&ocfg)
+		strategy, err = exposestrategy.NewRouteStrategy(kubeClient, oc, encoder, config.Domain)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create ingress expose strategy")
+		}
 	default:
-		return nil, errors.Errorf("unknown expose strategy '%s', must be one of %v", config.Exposer, []string{"NodePort", "LoadBalancer"})
+		return nil, errors.Errorf("unknown expose strategy '%s', must be one of %v", config.Exposer, []string{"Ingress", "Route", "NodePort", "LoadBalancer"})
 	}
 
 	c.svcLister.Store, c.svcController = framework.NewInformer(
