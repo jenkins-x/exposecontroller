@@ -18,7 +18,8 @@ BUILDFLAGS := -ldflags \
 		-X $(ROOT_PACKAGE)/version.Branch='$(BRANCH)'\
 		-X $(ROOT_PACKAGE)/version.BuildUser='${USER}@$(HOST)'\
 		-X $(ROOT_PACKAGE)/version.BuildDate='$(BUILD_DATE)'\
-		-X $(ROOT_PACKAGE)/version.GoVersion='$(GO_VERSION)'"
+		-X $(ROOT_PACKAGE)/version.GoVersion='$(GO_VERSION)'\
+		-s -w -extldflags '-static'"
 
 BIN_DIR := bin
 DIST_DIR := _dist
@@ -71,10 +72,10 @@ lint:
 	@echo "Linting does not currently fail the build but is likely to do so in future - fix stuff you see, when you see it please"
 	@export TMP=$(shell mktemp -d) && cp -r vendor $${TMP}/src && GOPATH=$${TMP}:$${GOPATH} GO15VENDOREXPERIMENT=1 gometalinter --vendor --deadline=60s $(LINTERS) ./... || rm -rf $${TMP}} || true
 
-docker-scratch:
+docker:
 	gox -verbose $(BUILDFLAGS) -os="linux" -arch="amd64" \
 	   -output="bin/exposecontroller-docker" .
-	docker build -f Dockerfile.scratch -t "fabric8/exposecontroller:scratch" .
+	docker build -t "fabric8/exposecontroller:dev" .
 
 release: build-all
 	rm -rf build release && mkdir build release
@@ -109,4 +110,5 @@ bump-patch:
 				test-charts \
 				lint \
 				bump \
-				bump-patch
+				bump-patch \
+				docker
