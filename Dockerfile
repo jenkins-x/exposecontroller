@@ -1,7 +1,5 @@
-FROM centos:7
+FROM scratch
 
-ENV PATH $PATH:/usr/local/exposecontroller/
+ENTRYPOINT ["/exposecontroller"]
 
-ADD ./bin/exposecontroller /usr/local/exposecontroller/
-
-CMD exposecontroller
+COPY ./bin/exposecontroller-docker /exposecontroller
