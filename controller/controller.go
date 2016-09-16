@@ -1,9 +1,12 @@
 package controller
 
 import (
+	"strings"
 	"time"
 
+	"github.com/fabric8io/exposecontroller/exposestrategy"
 	"github.com/golang/glog"
+	"github.com/pkg/errors"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/record"
@@ -19,7 +22,7 @@ type Controller struct {
 	svcController *framework.Controller
 	svcLister     cache.StoreToServiceLister
 
-	configMap string
+	config *Config
 
 	recorder record.EventRecorder
 
@@ -28,18 +31,25 @@ type Controller struct {
 
 func NewController(
 	kubeClient *client.Client,
-	resyncPeriod time.Duration, namespace, configMapName string) (*Controller, error) {
+	encoder runtime.Encoder,
+	resyncPeriod time.Duration, namespace string, config *Config) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
 	eventBroadcaster.StartRecordingToSink(kubeClient.Events(namespace))
 
 	c := Controller{
-		client:    kubeClient,
-		stopCh:    make(chan struct{}),
-		configMap: configMapName,
+		client: kubeClient,
+		stopCh: make(chan struct{}),
+		config: config,
 		recorder: eventBroadcaster.NewRecorder(api.EventSource{
 			Component: "expose-controller",
 		}),
+	}
+
+	var strategy exposestrategy.ExposeStrategy
+	strategy, err := exposestrategy.NewNodePortStrategy(kubeClient, encoder)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create update strategy")
 	}
 
 	c.svcLister.Store, c.svcController = framework.NewInformer(
@@ -47,7 +57,34 @@ func NewController(
 			ListFunc:  serviceListFunc(c.client, namespace),
 			WatchFunc: serviceWatchFunc(c.client, namespace),
 		},
-		&api.Service{}, resyncPeriod, framework.ResourceEventHandlerFuncs{})
+		&api.Service{},
+		resyncPeriod,
+		framework.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+				svc := obj.(*api.Service)
+				strategy.Add(svc)
+			},
+			UpdateFunc: func(oldObj interface{}, newObj interface{}) {
+				svc := newObj.(*api.Service)
+				if svc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value {
+					strategy.Add(svc)
+				} else {
+					strategy.Remove(svc)
+				}
+			},
+			DeleteFunc: func(obj interface{}) {
+				svc, ok := obj.(cache.DeletedFinalStateUnknown)
+				if ok {
+					// service key is in the form namespace/name
+					split := strings.Split(svc.Key, "/")
+					ns := split[0]
+					name := split[1]
+					strategy.Remove(&api.Service{ObjectMeta: api.ObjectMeta{Namespace: ns, Name: name}})
+					return
+				}
+			},
+		},
+	)
 
 	return &c, nil
 }

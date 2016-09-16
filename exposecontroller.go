@@ -13,7 +13,6 @@ import (
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
 	kubectlutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 
 	"github.com/fabric8io/exposecontroller/controller"
@@ -27,14 +26,11 @@ const (
 var (
 	flags = pflag.NewFlagSet("", pflag.ExitOnError)
 
-	configMap = flags.String("configmap", "exposecontroller",
-		`Name of the ConfigMap that contains the exposecontroller configuration to use`)
+	configFile = flags.String("config", "/etc/exposecontroller.yml",
+		`Path to the file that contains the exposecontroller configuration to use`)
 
 	resyncPeriod = flags.Duration("sync-period", 30*time.Second,
 		`Relist and confirm services this often.`)
-
-	watchNamespace = flags.String("controller-namespace", api.NamespaceAll,
-		`Namespace to watch for Services. Default is to watch all namespaces`)
 
 	healthzPort = flags.Int("healthz-port", healthPort, "port for healthz endpoint.")
 
@@ -42,25 +38,27 @@ var (
 )
 
 func main() {
-	flags.AddGoFlagSet(flag.CommandLine)
+	factory := kubectlutil.NewFactory(nil)
+	factory.BindFlags(flags)
+	factory.BindExternalFlags(flags)
 	flags.Parse(os.Args)
-	clientConfig := kubectlutil.DefaultClientConfig(flags)
+	flag.CommandLine.Parse([]string{})
 
 	glog.Infof("Using build: %v", version.Version)
 
-	config, err := clientConfig.ClientConfig()
+	kubeClient, err := factory.Client()
 	if err != nil {
-		glog.Fatalf("error connecting to the client: %v", err)
-	}
-	kubeClient, err := client.New(config)
-
-	if err != nil {
-		glog.Fatalf("failed to create client: %v", err)
+		glog.Fatalf("failed to create client: %s", err)
 	}
 
-	c, err := controller.NewController(kubeClient, *resyncPeriod, *watchNamespace, *configMap)
+	controllerConfig, err := controller.LoadFile(*configFile)
 	if err != nil {
-		glog.Fatalf("%v", err)
+		glog.Fatalf("%s", err)
+	}
+
+	c, err := controller.NewController(kubeClient, factory.JSONEncoder(), *resyncPeriod, api.NamespaceAll, controllerConfig)
+	if err != nil {
+		glog.Fatalf("%s", err)
 	}
 
 	go registerHandlers()
