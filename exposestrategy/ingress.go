@@ -24,6 +24,14 @@ type IngressStrategy struct {
 var _ ExposeStrategy = &IngressStrategy{}
 
 func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain string) (*IngressStrategy, error) {
+	t, err := typeOfMaster(client)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not create new ingress strategy")
+	}
+	if t == openShift {
+		return nil, errors.New("ingress strategy is not supported on OpenShift, please use Route strategy")
+	}
+
 	return &IngressStrategy{
 		client:  client,
 		encoder: encoder,

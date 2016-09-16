@@ -2,10 +2,14 @@ package exposestrategy
 
 import (
 	"bytes"
+	"encoding/json"
 	"net"
 
 	"github.com/pkg/errors"
+
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/unversioned"
+	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/strategicpatch"
 )
@@ -68,4 +72,30 @@ func createPatch(a runtime.Object, b runtime.Object, encoder runtime.Encoder, da
 	}
 
 	return patch, nil
+}
+
+type masterType string
+
+const (
+	openShift  masterType = "OpenShift"
+	kubernetes masterType = "Kubernetes"
+)
+
+func typeOfMaster(c *client.Client) (masterType, error) {
+	res, err := c.Get().AbsPath("").DoRaw()
+	if err != nil {
+		errors.Wrap(err, "could not discover the type of your installation")
+	}
+
+	var rp unversioned.RootPaths
+	err = json.Unmarshal(res, &rp)
+	if err != nil {
+		errors.Wrap(err, "could not discover the type of your installation")
+	}
+	for _, p := range rp.Paths {
+		if p == "/oapi" {
+			return openShift, nil
+		}
+	}
+	return kubernetes, nil
 }
