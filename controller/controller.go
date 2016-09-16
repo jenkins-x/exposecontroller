@@ -46,10 +46,23 @@ func NewController(
 		}),
 	}
 
-	var strategy exposestrategy.ExposeStrategy
-	strategy, err := exposestrategy.NewNodePortStrategy(kubeClient, encoder)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create update strategy")
+	var (
+		strategy exposestrategy.ExposeStrategy
+		err      error
+	)
+	switch strings.ToLower(config.Exposer) {
+	case "loadbalancer":
+		strategy, err = exposestrategy.NewLoadBalancerStrategy(kubeClient, encoder)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create load balancer expose strategy")
+		}
+	case "nodeport":
+		strategy, err = exposestrategy.NewNodePortStrategy(kubeClient, encoder)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create node port expose strategy")
+		}
+	default:
+		return nil, errors.Errorf("unknown expose strategy '%s', must be one of %v", config.Exposer, []string{"NodePort", "LoadBalancer"})
 	}
 
 	c.svcLister.Store, c.svcController = framework.NewInformer(
