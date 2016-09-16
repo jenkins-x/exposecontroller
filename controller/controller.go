@@ -61,6 +61,11 @@ func NewController(
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create node port expose strategy")
 		}
+	case "ingress":
+		strategy, err = exposestrategy.NewIngressStrategy(kubeClient, encoder, config.Domain)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create ingress expose strategy")
+		}
 	default:
 		return nil, errors.Errorf("unknown expose strategy '%s', must be one of %v", config.Exposer, []string{"NodePort", "LoadBalancer"})
 	}
@@ -76,15 +81,27 @@ func NewController(
 			AddFunc: func(obj interface{}) {
 				svc := obj.(*api.Service)
 				if svc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value {
-					strategy.Add(svc)
+					err := strategy.Add(svc)
+					if err != nil {
+						glog.Errorf("Add failed: %v", err)
+					}
 				}
 			},
 			UpdateFunc: func(oldObj interface{}, newObj interface{}) {
 				svc := newObj.(*api.Service)
 				if svc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value {
-					strategy.Add(svc)
+					err := strategy.Add(svc)
+					if err != nil {
+						glog.Errorf("Add failed: %v", err)
+					}
 				} else {
-					strategy.Remove(svc)
+					oldSvc := oldObj.(*api.Service)
+					if oldSvc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value {
+						err := strategy.Remove(svc)
+						if err != nil {
+							glog.Errorf("Remove failed: %v", err)
+						}
+					}
 				}
 			},
 			DeleteFunc: func(obj interface{}) {
@@ -94,8 +111,10 @@ func NewController(
 					split := strings.Split(svc.Key, "/")
 					ns := split[0]
 					name := split[1]
-					strategy.Remove(&api.Service{ObjectMeta: api.ObjectMeta{Namespace: ns, Name: name}})
-					return
+					err := strategy.Remove(&api.Service{ObjectMeta: api.ObjectMeta{Namespace: ns, Name: name}})
+					if err != nil {
+						glog.Errorf("Remove failed: %v", err)
+					}
 				}
 			},
 		},
