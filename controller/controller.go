@@ -62,7 +62,9 @@ func NewController(
 		framework.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
 				svc := obj.(*api.Service)
-				strategy.Add(svc)
+				if svc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value {
+					strategy.Add(svc)
+				}
 			},
 			UpdateFunc: func(oldObj interface{}, newObj interface{}) {
 				svc := newObj.(*api.Service)
