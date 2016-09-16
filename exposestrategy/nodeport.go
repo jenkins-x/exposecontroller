@@ -3,6 +3,7 @@ package exposestrategy
 import (
 	"fmt"
 	"net"
+	"reflect"
 	"strconv"
 
 	"github.com/pkg/errors"
@@ -80,7 +81,7 @@ func (s *NodePortStrategy) Add(svc *api.Service) error {
 	}
 	clone, ok := cloned.(*api.Service)
 	if !ok {
-		return errors.Errorf("cloned to wrong type")
+		return errors.Errorf("cloned to wrong type: %s", reflect.TypeOf(cloned))
 	}
 
 	clone.Spec.Type = api.ServiceTypeNodePort
@@ -131,7 +132,7 @@ func (s *NodePortStrategy) Remove(svc *api.Service) error {
 	}
 	clone, ok := cloned.(*api.Service)
 	if !ok {
-		return errors.Errorf("cloned to wrong type")
+		return errors.Errorf("cloned to wrong type: %s", reflect.TypeOf(cloned))
 	}
 
 	clone = removeServiceAnnotation(clone)
@@ -143,8 +144,8 @@ func (s *NodePortStrategy) Remove(svc *api.Service) error {
 	if patch != nil {
 		err = s.client.Patch(api.StrategicMergePatchType).
 			Resource("services").
-			Namespace(svc.Namespace).
-			Name(svc.Name).
+			Namespace(clone.Namespace).
+			Name(clone.Name).
 			Body(patch).Do().Error()
 		if err != nil {
 			return errors.Wrap(err, "failed to send patch")
