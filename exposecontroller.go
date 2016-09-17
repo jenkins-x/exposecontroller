@@ -53,7 +53,7 @@ func main() {
 
 	restClientConfig, err := factory.ClientConfig()
 	if err != nil {
-		glog.Fatalf("failed to create REST client config", err)
+		glog.Fatalf("failed to create REST client config: %s", err)
 	}
 
 	controllerConfig, err := controller.LoadFile(*configFile)
