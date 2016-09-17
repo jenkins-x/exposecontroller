@@ -32,6 +32,10 @@ func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain s
 		return nil, errors.New("ingress strategy is not supported on OpenShift, please use Route strategy")
 	}
 
+	if len(domain) == 0 {
+		return nil, errors.New("domain is required")
+	}
+
 	return &IngressStrategy{
 		client:  client,
 		encoder: encoder,

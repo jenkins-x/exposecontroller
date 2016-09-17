@@ -35,6 +35,10 @@ func NewRouteStrategy(client *client.Client, oclient *oclient.Client, encoder ru
 		return nil, errors.New("route strategy is not supported on Kubernetes, please use Ingress strategy")
 	}
 
+	if len(domain) == 0 {
+		return nil, errors.New("domain is required")
+	}
+
 	rapi.AddToScheme(api.Scheme)
 	rapiv1.AddToScheme(api.Scheme)
 
