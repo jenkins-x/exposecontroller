@@ -1,114 +1,97 @@
-ifndef GOPATH
-$(error No GOPATH set)
-endif
+# Copyright (C) 2016 Red Hat, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-NAME := exposecontroller
-VERSION := $(shell cat version/VERSION)
+# Use the native vendor/ dependency system
+export GO15VENDOREXPERIMENT=1
+
+VERSION ?= $(shell cat version/VERSION)
 REVISION=$(shell git rev-parse --short HEAD 2> /dev/null || echo 'unknown')
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD 2> /dev/null || echo 'unknown')
 HOST=$(shell hostname -f)
 BUILD_DATE=$(shell date +%Y%m%d-%H:%M:%S)
 GO_VERSION=$(shell go version | sed -e 's/^[^0-9.]*\([0-9.]*\).*/\1/')
 
+GOOS ?= $(shell go env GOOS)
+GOARCH ?= $(shell go env GOARCH)
+BUILD_DIR ?= ./out
+ORG := github.com/fabric8io
+REPOPATH ?= $(ORG)/exposecontroller
 ROOT_PACKAGE := $(shell go list .)
+
+ORIGINAL_GOPATH := $(GOPATH)
+GOPATH := $(shell pwd)/_gopath
 
 BUILDFLAGS := -ldflags \
   " -X $(ROOT_PACKAGE)/version.Version='$(VERSION)'\
-		-X $(ROOT_PACKAGE)/version.Revision='$(REVISION)'\
-		-X $(ROOT_PACKAGE)/version.Branch='$(BRANCH)'\
-		-X $(ROOT_PACKAGE)/version.BuildUser='${USER}@$(HOST)'\
-		-X $(ROOT_PACKAGE)/version.BuildDate='$(BUILD_DATE)'\
-		-X $(ROOT_PACKAGE)/version.GoVersion='$(GO_VERSION)'\
-		-s -w -extldflags '-static'"
+    -X $(ROOT_PACKAGE)/version.Revision='$(REVISION)'\
+    -X $(ROOT_PACKAGE)/version.Branch='$(BRANCH)'\
+    -X $(ROOT_PACKAGE)/version.BuildUser='${USER}@$(HOST)'\
+    -X $(ROOT_PACKAGE)/version.BuildDate='$(BUILD_DATE)'\
+    -X $(ROOT_PACKAGE)/version.GoVersion='$(GO_VERSION)'\
+    -s -w -extldflags '-static'"
 
-BIN_DIR := bin
-DIST_DIR := _dist
-GO := GO15VENDOREXPERIMENT=1 go
-GO_PACKAGES := $(shell $(GO) list ./... | grep -v /vendor/)
-SRCS := $(shell find . -path ./vendor -prune -o -name '*.go')
-MAIN_GO := exposecontroller.go
-exposecontroller_BIN := $(BIN_DIR)/exposecontroller
+MKGOPATH := if [ ! -e $(GOPATH)/src/$(ORG) ]; then mkdir -p $(GOPATH)/src/$(ORG) && ln -s -f $(shell pwd) $(GOPATH)/src/$(ORG); fi
 
-LINTERS := --disable-all --enable=vet --enable=golint --enable=errcheck --enable=ineffassign --enable=interfacer --enable=goimports --enable=gofmt
+GOFILES := go list  -f '{{join .Deps "\n"}}' $(REPOPATH) | grep $(REPOPATH) | xargs go list -f '{{ range $$file := .GoFiles }} {{$$.Dir}}/{{$$file}}{{"\n"}}{{end}}'
+GOPACKAGES := $(shell go list ./... | grep -v /vendor/)
 
-build: $(MAIN_GO)
-	$(GO) build -o $(exposecontroller_BIN) $(BUILDFLAGS) $<
+.PHONY: install
+install: $(ORIGINAL_GOPATH)/bin/exposecontroller
 
-bootstrap:
-	$(GO) get -u github.com/Masterminds/glide
-	GO15VENDOREXPERIMENT=1 glide update --strip-vendor --strip-vcs --update-vendored
+$(ORIGINAL_GOPATH)/bin/exposecontroller: out/exposecontroller-$(GOOS)-$(GOARCH)
+	cp $(BUILD_DIR)/exposecontroller-$(GOOS)-$(GOARCH) $(ORIGINAL_GOPATH)/bin/exposecontroller
 
-build-all:
-	gox -verbose \
-	$(BUILDFLAGS) \
-	-os="linux darwin freebsd netbsd openbsd solaris windows" \
-	-arch="amd64 386" \
-	-output="$(DIST_DIR)/{{.OS}}-{{.Arch}}/{{.Dir}}" .
+out/exposecontroller: out/exposecontroller-$(GOOS)-$(GOARCH)
+	cp $(BUILD_DIR)/exposecontroller-$(GOOS)-$(GOARCH) $(BUILD_DIR)/exposecontroller
 
-clean:
-	rm -rf $(DIST_DIR) $(BIN_DIR) release
+out/exposecontroller-darwin-amd64: $(shell $(GOFILES)) version/VERSION
+	$(MKGOPATH)
+	CGO_ENABLED=0 GOARCH=amd64 GOOS=darwin go build $(BUILDFLAGS) -o $(BUILD_DIR)/exposecontroller-darwin-amd64 $(ROOT_PACKAGE)
 
-install: build
-	install -d $(DESTDIR)/usr/local/bin/
-	install -m 755 $(exposecontroller_BIN) $(DESTDIR)/usr/local/bin/exposecontroller
+out/exposecontroller-linux-amd64: $(shell $(GOFILES)) version/VERSION
+	$(MKGOPATH)
+	CGO_ENABLED=0 GOARCH=amd64 GOOS=linux go build $(BUILDFLAGS) -o $(BUILD_DIR)/exposecontroller-linux-amd64 $(ROOT_PACKAGE)
 
-prep-bintray-json:
-# TRAVIS_TAG is set to the tag name if the build is a tag
-ifdef TRAVIS_TAG
-	@jq '.version.name |= "$(VERSION)"' _scripts/ci/bintray-template.json | \
-		jq '.package.repo |= "exposecontroller"' > _scripts/ci/bintray-ci.json
-else
-	@jq '.version.name |= "$(VERSION)"' _scripts/ci/bintray-template.json \
-		> _scripts/ci/bintray-ci.json
-endif
+out/exposecontroller-windows-amd64.exe: $(shell $(GOFILES)) version/VERSION
+	$(MKGOPATH)
+	CGO_ENABLED=0 GOARCH=amd64 GOOS=windows go build $(BUILDFLAGS) -o $(BUILD_DIR)/exposecontroller-windows-amd64.exe $(ROOT_PACKAGE)
 
-quicktest:
-	$(GO) test -short $(GO_PACKAGES)
-
+.PHONY: test
 test:
-	$(GO) test -v $(GO_PACKAGES)
+	$(MKGOPATH)
+	go test -v $(GOPACKAGES)
 
-lint:
-	@echo "Linting does not currently fail the build but is likely to do so in future - fix stuff you see, when you see it please"
-	@export TMP=$(shell mktemp -d) && cp -r vendor $${TMP}/src && GOPATH=$${TMP}:$${GOPATH} GO15VENDOREXPERIMENT=1 gometalinter --vendor --deadline=60s $(LINTERS) ./... || rm -rf $${TMP}} || true
+$(GOPATH)/bin/gh-release:
+	$(MKGOPATH)
+	go get github.com/progrium/gh-release
 
-docker:
-	gox -verbose $(BUILDFLAGS) -os="linux" -arch="amd64" \
-	   -output="bin/exposecontroller-docker" .
+.PHONY: release
+release: clean test $(GOPATH)/bin/gh-release cross
+	mkdir -p release
+	cp out/exposecontroller-*-amd64* release
+	gh-release checksums sha256
+	gh-release create fabric8io/exposecontroller $(VERSION) master v$(VERSION)
+
+.PHONY: cross
+cross: out/exposecontroller-linux-amd64 out/exposecontroller-darwin-amd64 out/exposecontroller-windows-amd64.exe
+
+.PHONY: clean
+clean:
+	rm -rf $(GOPATH)
+	rm -rf $(BUILD_DIR)
+	rm -rf release
+
+.PHONY: docker
+docker: out/exposecontroller-linux-amd64
 	docker build -t "fabric8/exposecontroller:dev" .
-
-release: build-all
-	rm -rf build release && mkdir build release
-	for os in linux darwin freebsd netbsd openbsd solaris ; do \
-		for arch in amd64 386 ; do \
-			tar --transform "s|^$(DIST_DIR)/$$os-$$arch/||" -czf release/$(NAME)-$(VERSION)-$$os-$$arch.tar.gz $(DIST_DIR)/$$os-$$arch/$(NAME) README.md LICENSE ; \
-		done ; \
-	done
-	for arch in amd64 386 ; do \
-		zip -q --junk-paths release/$(NAME)-$(VERSION)-windows-$$arch.zip $(DIST_DIR)/windows-$$arch/$(NAME).exe README.md LICENSE ; \
-	done ; \
-	$(GO) get -u github.com/progrium/gh-release
-	gh-release create fabric8io/$(NAME) $(VERSION) $(BRANCH) $(VERSION)
-
-bump:
-	gobump minor -f version/VERSION
-
-bump-patch:
-	gobump patch -f version/VERSION
-
-.PHONY: release clean
-
-.PHONY: bootstrap \
-				build \
-				build-all \
-				clean \
-				install \
-				prep-bintray-json \
-				quicktest \
-				release \
-				test \
-				test-charts \
-				lint \
-				bump \
-				bump-patch \
-				docker

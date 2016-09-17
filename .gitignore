@@ -4,3 +4,5 @@ _dist/
 .idea
 golib
 release
+out/
+_gopath/

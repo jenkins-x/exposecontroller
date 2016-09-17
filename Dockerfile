@@ -2,4 +2,4 @@ FROM scratch
 
 ENTRYPOINT ["/exposecontroller"]
 
-COPY ./bin/exposecontroller-docker /exposecontroller
+COPY ./out/exposecontroller-linux-amd64 /exposecontroller
