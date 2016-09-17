@@ -7,7 +7,6 @@ import (
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
 
-	oclient "github.com/openshift/origin/pkg/client"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/record"
@@ -51,38 +50,9 @@ func NewController(
 		}),
 	}
 
-	var (
-		strategy exposestrategy.ExposeStrategy
-		err      error
-	)
-	switch strings.ToLower(config.Exposer) {
-	case "loadbalancer":
-		strategy, err = exposestrategy.NewLoadBalancerStrategy(kubeClient, encoder)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to create load balancer expose strategy")
-		}
-	case "nodeport":
-		strategy, err = exposestrategy.NewNodePortStrategy(kubeClient, encoder)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to create node port expose strategy")
-		}
-	case "ingress":
-		strategy, err = exposestrategy.NewIngressStrategy(kubeClient, encoder, config.Domain)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to create ingress expose strategy")
-		}
-	case "route":
-		ocfg := *restClientConfig
-		ocfg.APIPath = ""
-		ocfg.GroupVersion = nil
-		ocfg.NegotiatedSerializer = nil
-		oc, _ := oclient.New(&ocfg)
-		strategy, err = exposestrategy.NewRouteStrategy(kubeClient, oc, encoder, config.Domain)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to create ingress expose strategy")
-		}
-	default:
-		return nil, errors.Errorf("unknown expose strategy '%s', must be one of %v", config.Exposer, []string{"Ingress", "Route", "NodePort", "LoadBalancer"})
+	strategy, err := exposestrategy.New(config.Exposer, config.Domain, kubeClient, restClientConfig, encoder)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create new strategy")
 	}
 
 	c.svcLister.Store, c.svcController = framework.NewInformer(
