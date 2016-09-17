@@ -37,7 +37,7 @@ func Load(s string) (*Config, error) {
 }
 
 type Config struct {
-	Domain  string `yaml:"domain"`
+	Domain  string `yaml:"domain,omitempty"`
 	Exposer string `yaml:"exposer"`
 
 	// original is the input from which the config was parsed.
