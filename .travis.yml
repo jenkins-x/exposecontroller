@@ -1,9 +1,4 @@
 language: go
-go:
-- 1.7
-branches:
-  only:
-  - master
 install:
 - echo "Don't run anything."
 script:
