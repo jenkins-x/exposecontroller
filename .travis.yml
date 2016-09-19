@@ -1,6 +1,7 @@
 language: go
+go:
+- 1.7.1
 install:
 - echo "Don't run anything."
 script:
-- travis_retry make test
-- make cross
+- make
