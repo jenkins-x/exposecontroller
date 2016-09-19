@@ -39,17 +39,25 @@ var (
 	// exposed externally.
 	DeadOpenShiftStorageVersionLevels = []string{"v1beta1", "v1beta3"}
 
-	APIGroupKube        = ""
-	APIGroupExtensions  = "extensions"
-	APIGroupAutoscaling = "autoscaling"
-	APIGroupBatch       = "batch"
+	APIGroupKube           = ""
+	APIGroupExtensions     = "extensions"
+	APIGroupAutoscaling    = "autoscaling"
+	APIGroupAuthentication = "authentication.k8s.io"
+	APIGroupBatch          = "batch"
+	APIGroupPolicy         = "policy"
+	APIGroupApps           = "apps"
+	APIGroupFederation     = "federation"
 
 	// Map of group names to allowed REST API versions
 	KubeAPIGroupsToAllowedVersions = map[string][]string{
-		APIGroupKube:        {"v1"},
-		APIGroupExtensions:  {"v1beta1"},
-		APIGroupAutoscaling: {"v1"},
-		APIGroupBatch:       {"v1"},
+		APIGroupKube:           {"v1"},
+		APIGroupExtensions:     {"v1beta1"},
+		APIGroupAutoscaling:    {"v1"},
+		APIGroupAuthentication: {"v1beta1"},
+		APIGroupBatch:          {"v1", "v2alpha1"},
+		APIGroupApps:           {"v1alpha1"},
+		// TODO: enable as part of a separate binary
+		//APIGroupFederation:  {"v1beta1"},
 	}
 	// Map of group names to known, but disallowed REST API versions
 	KubeAPIGroupsToDeadVersions = map[string][]string{
@@ -57,6 +65,8 @@ var (
 		APIGroupExtensions:  {},
 		APIGroupAutoscaling: {},
 		APIGroupBatch:       {},
+		APIGroupPolicy:      {},
+		APIGroupApps:        {},
 	}
 	KnownKubeAPIGroups = sets.StringKeySet(KubeAPIGroupsToAllowedVersions)
 
@@ -89,6 +99,9 @@ type NodeConfig struct {
 
 	// MasterKubeConfig is a filename for the .kubeconfig file that describes how to connect this node to the master
 	MasterKubeConfig string
+
+	// MasterClientConnectionOverrides provides overrides to the client connection used to connect to the master.
+	MasterClientConnectionOverrides *ClientConnectionOverrides
 
 	// DNSDomain holds the domain suffix
 	DNSDomain string
@@ -131,6 +144,9 @@ type NodeConfig struct {
 	// IPTablesSyncPeriod is how often iptable rules are refreshed
 	IPTablesSyncPeriod string
 
+	// EnableUnidling controls whether or not the hybrid unidling proxy will be set up
+	EnableUnidling bool
+
 	// VolumeConfig contains options for configuring volumes on the node.
 	VolumeConfig NodeVolumeConfig
 }
@@ -160,7 +176,7 @@ type NodeNetworkConfig struct {
 	// NetworkPluginName is a string specifying the networking plugin
 	NetworkPluginName string
 	// Maximum transmission unit for the network packets
-	MTU uint
+	MTU uint32
 }
 
 // NodeAuthConfig holds authn/authz configuration options
@@ -237,6 +253,8 @@ type MasterConfig struct {
 	// AdmissionConfig contains admission control plugin configuration.
 	AdmissionConfig AdmissionConfig
 
+	ControllerConfig ControllerConfig
+
 	// Allow to disable OpenShift components
 	DisabledFeatures FeatureList
 
@@ -288,6 +306,38 @@ type MasterConfig struct {
 
 	// VolumeConfig contains options for configuring volumes on the node.
 	VolumeConfig MasterVolumeConfig
+
+	// JenkinsPipelineConfig holds information about the default Jenkins template
+	// used for JenkinsPipeline build strategy.
+	JenkinsPipelineConfig JenkinsPipelineConfig
+
+	// AuditConfig holds information related to auditing capabilities.
+	AuditConfig AuditConfig
+}
+
+// AuditConfig holds configuration for the audit capabilities
+type AuditConfig struct {
+	// If this flag is set, audit log will be printed in the logs.
+	// The logs contains, method, user and a requested URL.
+	Enabled bool
+}
+
+// JenkinsPipelineConfig holds configuration for the Jenkins pipeline strategy
+type JenkinsPipelineConfig struct {
+	// AutoProvisionEnabled determines whether a Jenkins server will be spawned from the provided
+	// template when the first build config in the project with type JenkinsPipeline
+	// is created. When not specified this option defaults to false.
+	AutoProvisionEnabled *bool
+	// TemplateNamespace contains the namespace name where the Jenkins template is stored
+	TemplateNamespace string
+	// TemplateName is the name of the default Jenkins template
+	TemplateName string
+	// ServiceName is the name of the Jenkins service OpenShift uses to detect
+	// whether a Jenkins pipeline handler has already been installed in a project.
+	// This value *must* match a service name in the provided template.
+	ServiceName string
+	// Parameters specifies a set of optional parameters to the Jenkins template.
+	Parameters map[string]string
 }
 
 type ImagePolicyConfig struct {
@@ -296,13 +346,13 @@ type ImagePolicyConfig struct {
 	// importing large numbers of images accidentally. Set -1 for no limit.
 	MaxImagesBulkImportedPerRepository int
 	// DisableScheduledImport allows scheduled background import of images to be disabled.
-	DisableScheduledImport bool `json:"disableScheduledImport"`
+	DisableScheduledImport bool
 	// ScheduledImageImportMinimumIntervalSeconds is the minimum number of seconds that can elapse between when image streams
 	// scheduled for background import are checked against the upstream repository. The default value is 15 minutes.
-	ScheduledImageImportMinimumIntervalSeconds int `json:"scheduledImageImportMinimumIntervalSeconds"`
+	ScheduledImageImportMinimumIntervalSeconds int
 	// MaxScheduledImageImportsPerMinute is the maximum number of image streams that will be imported in the background per minute.
 	// The default value is 60. Set to -1 for unlimited.
-	MaxScheduledImageImportsPerMinute int `json:"maxScheduledImageImportsPerMinute"`
+	MaxScheduledImageImportsPerMinute int
 }
 
 type ProjectConfig struct {
@@ -395,13 +445,18 @@ type UserAgentDenyRule struct {
 type MasterNetworkConfig struct {
 	NetworkPluginName  string
 	ClusterNetworkCIDR string
-	HostSubnetLength   uint
+	HostSubnetLength   uint32
 	ServiceNetworkCIDR string
 	// ExternalIPNetworkCIDRs controls what values are acceptable for the service external IP field. If empty, no externalIP
 	// may be set. It may contain a list of CIDRs which are checked for access. If a CIDR is prefixed with !, IPs in that
 	// CIDR will be rejected. Rejections will be applied first, then the IP checked against one of the allowed CIDRs. You
 	// should ensure this range does not overlap with your nodes, pods, or service CIDRs for security reasons.
-	ExternalIPNetworkCIDRs []string `json:"externalIPNetworkCIDRs"`
+	ExternalIPNetworkCIDRs []string
+	// IngressIPNetworkCIDR controls the range to assign ingress ips from for services of type LoadBalancer on bare
+	// metal. If empty, ingress ips will not be assigned. It may contain a single CIDR that will be allocated from.
+	// For security reasons, you should ensure that this range does not overlap with the CIDRs reserved for external ips,
+	// nodes, pods, or services.
+	IngressIPNetworkCIDR string
 }
 
 type ImageConfig struct {
@@ -494,6 +549,25 @@ type MasterClients struct {
 	OpenShiftLoopbackKubeConfig string
 	// ExternalKubernetesKubeConfig is a .kubeconfig filename for proxying to kubernetes
 	ExternalKubernetesKubeConfig string
+
+	// OpenShiftLoopbackClientConnectionOverrides specifies client overrides for system components to loop back to this master.
+	OpenShiftLoopbackClientConnectionOverrides *ClientConnectionOverrides
+	// ExternalKubernetesClientConnectionOverrides specifies client overrides for proxying to Kubernetes.
+	ExternalKubernetesClientConnectionOverrides *ClientConnectionOverrides
+}
+
+type ClientConnectionOverrides struct {
+	// AcceptContentTypes defines the Accept header sent by clients when connecting to a server, overriding the
+	// default value of 'application/json'. This field will control all connections to the server used by a particular
+	// client.
+	AcceptContentTypes string
+	// ContentType is the content type used when sending data to the server from this client.
+	ContentType string
+
+	// QPS controls the number of queries per second allowed for this connection.
+	QPS float32
+	// Burst allows extra queries to accumulate when a client is exceeding its rate.
+	Burst int32
 }
 
 type DNSConfig struct {
@@ -530,6 +604,10 @@ type AssetConfig struct {
 	// ExtensionScripts are file paths on the asset server files to load as scripts when the Web
 	// Console loads
 	ExtensionScripts []string
+
+	// ExtensionProperties are key(string) and value(string) pairs that will be injected into the console under
+	// the global variable OPENSHIFT_EXTENSION_PROPERTIES
+	ExtensionProperties map[string]string
 
 	// ExtensionStylesheets are file paths on the asset server files to load as stylesheets when
 	// the Web Console loads
@@ -855,6 +933,10 @@ type OpenIDClaims struct {
 type GrantConfig struct {
 	// Method: allow, deny, prompt
 	Method GrantHandlerType
+
+	// ServiceAccountMethod is used for determining client authorization for service account oauth client.
+	// It must be either: deny, prompt
+	ServiceAccountMethod GrantHandlerType
 }
 
 type GrantHandlerType string
@@ -869,6 +951,7 @@ const (
 )
 
 var ValidGrantHandlerTypes = sets.NewString(string(GrantHandlerAuto), string(GrantHandlerPrompt), string(GrantHandlerDeny))
+var ValidServiceAccountGrantHandlerTypes = sets.NewString(string(GrantHandlerPrompt), string(GrantHandlerDeny))
 
 type EtcdConfig struct {
 	// ServingInfo describes how to start serving the etcd master
@@ -898,8 +981,10 @@ type KubernetesMasterConfig struct {
 	ServicesNodePortRange string
 	// StaticNodeNames is the list of nodes that are statically known
 	StaticNodeNames []string
+
 	// SchedulerConfigFile points to a file that describes how to set up the scheduler. If empty, you get the default scheduling rules.
 	SchedulerConfigFile string
+
 	// PodEvictionTimeout controls grace period for deleting pods on failed nodes.
 	// It takes valid time duration string. If empty, you get the default pod eviction timeout.
 	PodEvictionTimeout string
@@ -919,6 +1004,10 @@ type KubernetesMasterConfig struct {
 	// the server will not start. These values may override other settings in KubernetesMasterConfig which may cause invalid
 	// configurations.
 	ControllerArguments ExtendedArguments
+	// SchedulerArguments are key value pairs that will be passed directly to the Kube scheduler that match the scheduler's
+	// command line arguments.  These are not migrated, but if you reference a value that does not exist the server will not
+	// start. These values may override other settings in KubernetesMasterConfig which may cause invalid configurations.
+	SchedulerArguments ExtendedArguments
 }
 
 type CertInfo struct {
@@ -1143,4 +1232,29 @@ type AdmissionConfig struct {
 	// PluginOrderOverride is a list of admission control plugin names that will be installed
 	// on the master. Order is significant. If empty, a default list of plugins is used.
 	PluginOrderOverride []string
+}
+
+// ControllerConfig holds configuration values for controllers
+type ControllerConfig struct {
+	// ServiceServingCert holds configuration for service serving cert signer which creates cert/key pairs for
+	// pods fulfilling a service to serve with.
+	ServiceServingCert ServiceServingCert
+}
+
+// ServiceServingCert holds configuration for service serving cert signer which creates cert/key pairs for
+// pods fulfilling a service to serve with.
+type ServiceServingCert struct {
+	// Signer holds the signing information used to automatically sign serving certificates.
+	// If this value is nil, then certs are not signed automatically.
+	Signer *CertInfo
+}
+
+// DefaultAdmissionConfig can be used to enable or disable various admission plugins.
+// When this type is present as the `configuration` object under `pluginConfig` and *if* the admission plugin supports it,
+// this will cause an "off by default" admission plugin to be enabled
+type DefaultAdmissionConfig struct {
+	unversioned.TypeMeta
+
+	// Disable turns off an admission plugin that is enabled by default.
+	Disable bool
 }

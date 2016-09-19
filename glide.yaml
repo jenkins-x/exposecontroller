@@ -1,20 +1,14 @@
 package: github.com/fabric8io/exposecontroller
 import:
-- package: github.com/daviddengcn/go-colortext
 - package: github.com/openshift/origin
-  version: v1.2.1
+  version: v1.3.0
   subpackages:
   - pkg/client
 - package: github.com/spf13/cobra
-- package: speter.net/go/exp/math/dec/inf
-  repo: https://gopkg.in/inf.v0
 - package: github.com/spf13/pflag
-- package: golang.org/x/crypto
-  subpackages:
-  - ssh
 - package: k8s.io/kubernetes
-  version: 114a51dfbc43a8bcf07db1774a20e05d560e34b0
-  repo: git@github.com:openshift/kubernetes.git
+  version: 52492b4bff99ef3b8ca617d385a3ff0612f9402d
+  repo: git://github.com/openshift/kubernetes.git
   vcs: git
   subpackages:
   - pkg/api
@@ -27,13 +21,15 @@ import:
   - pkg/labels
   - pkg/runtime
   - pkg/util
+- package: github.com/opencontainers/runc
+  version: v0.0.7
+  subpackages:
+  - libcontainer
+- package: github.com/imdario/mergo
+  version: 6633656539c1639d9d78127b7d47c622b5d7b6dc
 - package: github.com/Sirupsen/logrus
-  version: v0.10.0
-- package: github.com/coreos/pkg
-  version: v2
-  subpackages:
-  - capnslog
-- package: github.com/coreos/go-systemd
-  version: v11
-  subpackages:
-  - journal
+  version: aaf92c95712104318fc35409745f1533aa5ff327
+- package: github.com/docker/distribution
+  version: 559433598c7be9d30d6cfc5cad5b5dfdb686725c
+  repo: git://github.com/openshift/docker-distribution.git
+  vcs: git

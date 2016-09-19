@@ -4,4 +4,5 @@ go:
 install:
 - echo "Don't run anything."
 script:
-- make
+- make test
+- make cross

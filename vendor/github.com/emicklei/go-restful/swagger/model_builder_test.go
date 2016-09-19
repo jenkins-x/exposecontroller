@@ -1,6 +1,7 @@
 package swagger
 
 import (
+	"encoding/xml"
 	"net"
 	"testing"
 	"time"
@@ -36,6 +37,59 @@ func TestRef_Issue190(t *testing.T) {
    }
   }
  }`)
+}
+
+func TestWithoutAdditionalFormat(t *testing.T) {
+	type mytime struct {
+		time.Time
+	}
+	type usemytime struct {
+		t mytime
+	}
+	testJsonFromStruct(t, usemytime{}, `{
+  "swagger.usemytime": {
+   "id": "swagger.usemytime",
+   "required": [
+    "t"
+   ],
+   "properties": {
+    "t": {
+     "type": "string"
+    }
+   }
+  }
+ }`)
+}
+
+func TestWithAdditionalFormat(t *testing.T) {
+	type mytime struct {
+		time.Time
+	}
+	type usemytime struct {
+		t mytime
+	}
+	testJsonFromStructWithConfig(t, usemytime{}, `{
+  "swagger.usemytime": {
+   "id": "swagger.usemytime",
+   "required": [
+    "t"
+   ],
+   "properties": {
+    "t": {
+     "type": "string",
+     "format": "date-time"
+    }
+   }
+  }
+ }`, &Config{
+		SchemaFormatHandler: func(typeName string) string {
+			switch typeName {
+			case "swagger.mytime":
+				return "date-time"
+			}
+			return ""
+		},
+	})
 }
 
 // clear && go test -v -test.run TestCustomMarshaller_Issue96 ...swagger
@@ -803,8 +857,8 @@ type Region struct {
 // clear && go test -v -test.run TestRegion_Issue113 ...swagger
 func TestRegion_Issue113(t *testing.T) {
 	testJsonFromStruct(t, []Region{}, `{
-  "integer": {
-   "id": "integer",
+  "||swagger.Region": {
+   "id": "||swagger.Region",
    "properties": {}
   },
   "swagger.Region": {
@@ -816,10 +870,7 @@ func TestRegion_Issue113(t *testing.T) {
    ],
    "properties": {
     "id": {
-     "type": "array",
-     "items": {
-      "$ref": "integer"
-     }
+     "type": "string"
     },
     "name": {
      "type": "string"
@@ -828,10 +879,6 @@ func TestRegion_Issue113(t *testing.T) {
      "type": "string"
     }
    }
-  },
-  "||swagger.Region": {
-   "id": "||swagger.Region",
-   "properties": {}
   }
  }`)
 }
@@ -872,6 +919,25 @@ func TestIssue158(t *testing.T) {
   }
  }`
 	testJsonFromStruct(t, Customer{}, expected)
+}
+
+func TestPointers(t *testing.T) {
+	type Vote struct {
+		What YesNo
+	}
+	testJsonFromStruct(t, &Vote{}, `{
+  "swagger.Vote": {
+   "id": "swagger.Vote",
+   "required": [
+    "What"
+   ],
+   "properties": {
+    "What": {
+     "type": "string"
+    }
+   }
+  }
+ }`)
 }
 
 func TestSlices(t *testing.T) {
@@ -1139,4 +1205,33 @@ func TestOverridenTypeTagE1(t *testing.T) {
  }
 `
 	testJsonFromStruct(t, E{}, expected)
+}
+
+type XmlNamed struct {
+	XMLName xml.Name `xml:"user"`
+	Id      string   `json:"id" xml:"id"`
+	Name    string   `json:"name" xml:"name"`
+}
+
+func TestXmlNameStructs(t *testing.T) {
+	expected := `
+{
+  "swagger.XmlNamed": {
+   "id": "swagger.XmlNamed",
+   "required": [
+    "id",
+    "name"
+   ],
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    }
+   }
+  }
+ }
+`
+	testJsonFromStruct(t, XmlNamed{}, expected)
 }

@@ -8,7 +8,7 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	apierrs "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/diff"
 
 	client "github.com/openshift/origin/pkg/client/testclient"
 	"github.com/openshift/origin/pkg/dockerregistry"
@@ -287,7 +287,7 @@ func TestControllerStart(t *testing.T) {
 			}
 		} else {
 			if !kapi.Semantic.DeepEqual(test.stream, other) {
-				t.Errorf("%d: did not expect change to stream: %s", i, util.ObjectGoPrintDiff(test.stream, other))
+				t.Errorf("%d: did not expect change to stream: %s", i, diff.ObjectGoPrintDiff(test.stream, other))
 			}
 			if len(fake.Actions()) != 0 {
 				t.Errorf("%d: did not expect remote calls", i)
@@ -396,7 +396,7 @@ func TestScheduledImport(t *testing.T) {
 	}
 
 	// encountering a not found error for image streams should drop the controller
-	status := apierrs.NewNotFound(api.Resource("imagestream"), "test").(*apierrs.StatusError).ErrStatus
+	status := apierrs.NewNotFound(api.Resource("imagestream"), "test").ErrStatus
 	fake = client.NewSimpleFake(&status)
 	b.controller.streams = fake
 	b.scheduler.RunOnce()

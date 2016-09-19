@@ -7,11 +7,12 @@ import (
 	kolder "k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/conversion/queryparams"
 
+	"reflect"
+
 	newer "github.com/openshift/origin/pkg/build/api"
 	_ "github.com/openshift/origin/pkg/build/api/install"
 	older "github.com/openshift/origin/pkg/build/api/v1"
 	testutil "github.com/openshift/origin/test/util/api"
-	"reflect"
 )
 
 var Convert = knewer.Scheme.Convert
@@ -37,7 +38,7 @@ func TestBinaryBuildRequestOptions(t *testing.T) {
 		AsFile: "Dockerfile",
 		Commit: "abcdef",
 	}
-	versioned, err := knewer.Scheme.ConvertToVersion(r, "v1")
+	versioned, err := knewer.Scheme.ConvertToVersion(r, kolder.SchemeGroupVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +47,7 @@ func TestBinaryBuildRequestOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	decoded := &older.BinaryBuildRequestOptions{}
-	if err := knewer.Scheme.Convert(&params, decoded); err != nil {
+	if err := knewer.Scheme.Convert(&params, decoded, nil); err != nil {
 		t.Fatal(err)
 	}
 	if decoded.Commit != "abcdef" || decoded.AsFile != "Dockerfile" {
@@ -57,7 +58,7 @@ func TestBinaryBuildRequestOptions(t *testing.T) {
 func TestBuildConfigDefaulting(t *testing.T) {
 	buildConfig := &older.BuildConfig{
 		Spec: older.BuildConfigSpec{
-			BuildSpec: older.BuildSpec{
+			CommonSpec: older.CommonSpec{
 				Source: older.BuildSource{
 					Type: older.BuildSourceBinary,
 				},
@@ -69,7 +70,7 @@ func TestBuildConfigDefaulting(t *testing.T) {
 	}
 
 	var internalBuild newer.BuildConfig
-	Convert(buildConfig, &internalBuild)
+	Convert(buildConfig, &internalBuild, nil)
 
 	binary := internalBuild.Spec.Source.Binary
 	if binary == (*newer.BinaryBuildSource)(nil) || *binary != (newer.BinaryBuildSource{}) {
@@ -83,12 +84,12 @@ func TestBuildConfigDefaulting(t *testing.T) {
 	}
 }
 
-func TestBuildConfigConversion(t *testing.T) {
+func TestV1APIBuildConfigConversion(t *testing.T) {
 	buildConfigs := []*older.BuildConfig{
 		{
 			ObjectMeta: kolder.ObjectMeta{Name: "config-id", Namespace: "namespace"},
 			Spec: older.BuildConfigSpec{
-				BuildSpec: older.BuildSpec{
+				CommonSpec: older.CommonSpec{
 					Source: older.BuildSource{
 						Type: older.BuildSourceGit,
 						Git: &older.GitBuildSource{
@@ -128,7 +129,7 @@ func TestBuildConfigConversion(t *testing.T) {
 		{
 			ObjectMeta: kolder.ObjectMeta{Name: "config-id", Namespace: "namespace"},
 			Spec: older.BuildConfigSpec{
-				BuildSpec: older.BuildSpec{
+				CommonSpec: older.CommonSpec{
 					Source: older.BuildSource{
 						Type: older.BuildSourceGit,
 						Git: &older.GitBuildSource{
@@ -168,7 +169,7 @@ func TestBuildConfigConversion(t *testing.T) {
 		{
 			ObjectMeta: kolder.ObjectMeta{Name: "config-id", Namespace: "namespace"},
 			Spec: older.BuildConfigSpec{
-				BuildSpec: older.BuildSpec{
+				CommonSpec: older.CommonSpec{
 					Source: older.BuildSource{
 						Type: older.BuildSourceGit,
 						Git: &older.GitBuildSource{
@@ -211,7 +212,7 @@ func TestBuildConfigConversion(t *testing.T) {
 
 		var internalbuild newer.BuildConfig
 
-		Convert(bc, &internalbuild)
+		Convert(bc, &internalbuild, nil)
 		switch bc.Spec.Strategy.Type {
 		case older.SourceBuildStrategyType:
 			if internalbuild.Spec.Strategy.SourceStrategy.From.Kind != "ImageStreamTag" {
@@ -254,11 +255,74 @@ func TestBuildConfigConversion(t *testing.T) {
 	}
 }
 
+func TestAPIV1NoSourceBuildConfigConversion(t *testing.T) {
+	buildConfigs := []*newer.BuildConfig{
+		{
+			ObjectMeta: knewer.ObjectMeta{Name: "config-id", Namespace: "namespace"},
+			Spec: newer.BuildConfigSpec{
+				CommonSpec: newer.CommonSpec{
+					Source: newer.BuildSource{},
+					Strategy: newer.BuildStrategy{
+						DockerStrategy: &newer.DockerBuildStrategy{
+							From: &knewer.ObjectReference{
+								Kind: "ImageStream",
+								Name: "fromstream",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			ObjectMeta: knewer.ObjectMeta{Name: "config-id", Namespace: "namespace"},
+			Spec: newer.BuildConfigSpec{
+				CommonSpec: newer.CommonSpec{
+					Source: newer.BuildSource{},
+					Strategy: newer.BuildStrategy{
+						SourceStrategy: &newer.SourceBuildStrategy{
+							From: knewer.ObjectReference{
+								Kind: "ImageStream",
+								Name: "fromstream",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			ObjectMeta: knewer.ObjectMeta{Name: "config-id", Namespace: "namespace"},
+			Spec: newer.BuildConfigSpec{
+				CommonSpec: newer.CommonSpec{
+					Source: newer.BuildSource{},
+					Strategy: newer.BuildStrategy{
+						CustomStrategy: &newer.CustomBuildStrategy{
+							From: knewer.ObjectReference{
+								Kind: "ImageStream",
+								Name: "fromstream",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for c, bc := range buildConfigs {
+
+		var internalbuild older.BuildConfig
+
+		Convert(bc, &internalbuild, nil)
+		if internalbuild.Spec.Source.Type != older.BuildSourceNone {
+			t.Errorf("Unexpected source type at index %d: %s", c, internalbuild.Spec.Source.Type)
+		}
+	}
+}
+
 func TestInvalidImageChangeTriggerRemoval(t *testing.T) {
 	buildConfig := older.BuildConfig{
 		ObjectMeta: kolder.ObjectMeta{Name: "config-id", Namespace: "namespace"},
 		Spec: older.BuildConfigSpec{
-			BuildSpec: older.BuildSpec{
+			CommonSpec: older.CommonSpec{
 				Strategy: older.BuildStrategy{
 					Type: older.DockerBuildStrategyType,
 					DockerStrategy: &older.DockerBuildStrategy{
@@ -289,12 +353,42 @@ func TestInvalidImageChangeTriggerRemoval(t *testing.T) {
 
 	var internalBC newer.BuildConfig
 
-	Convert(&buildConfig, &internalBC)
+	Convert(&buildConfig, &internalBC, nil)
 	if len(internalBC.Spec.Triggers) != 1 {
 		t.Errorf("Expected 1 trigger, got %d", len(internalBC.Spec.Triggers))
 	}
 	if internalBC.Spec.Triggers[0].ImageChange.From == nil {
 		t.Errorf("Expected remaining trigger to have a From value")
+	}
+
+}
+
+func TestImageChangeTriggerNilImageChangePointer(t *testing.T) {
+	buildConfig := older.BuildConfig{
+		ObjectMeta: kolder.ObjectMeta{Name: "config-id", Namespace: "namespace"},
+		Spec: older.BuildConfigSpec{
+			CommonSpec: older.CommonSpec{
+				Strategy: older.BuildStrategy{
+					Type:           older.SourceBuildStrategyType,
+					SourceStrategy: &older.SourceBuildStrategy{},
+				},
+			},
+			Triggers: []older.BuildTriggerPolicy{
+				{
+					Type:        older.ImageChangeBuildTriggerType,
+					ImageChange: nil,
+				},
+			},
+		},
+	}
+
+	var internalBC newer.BuildConfig
+
+	Convert(&buildConfig, &internalBC, nil)
+	for _, ic := range internalBC.Spec.Triggers {
+		if ic.ImageChange == nil {
+			t.Errorf("Expected trigger to have ImageChange value")
+		}
 	}
 
 }

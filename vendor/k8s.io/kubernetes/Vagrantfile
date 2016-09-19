@@ -77,6 +77,12 @@ $kube_provider_boxes = {
       :box_name => 'kube-fedora23',
       :box_url => 'https://opscode-vm-bento.s3.amazonaws.com/vagrant/vmware/opscode_fedora-23_chef-provisionerless.box'
     }
+  },
+  :vsphere => {
+    'fedora' => {
+      :box_name => 'vsphere-dummy',
+      :box_url => 'https://github.com/deromka/vagrant-vsphere/blob/master/vsphere-dummy.box?raw=true'
+    }
   }
 }
 
@@ -108,6 +114,14 @@ $vm_master_mem = (ENV['KUBERNETES_MASTER_MEMORY'] || ENV['KUBERNETES_MEMORY'] ||
 $vm_node_mem = (ENV['KUBERNETES_NODE_MEMORY'] || ENV['KUBERNETES_MEMORY'] || 1024).to_i
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  if Vagrant.has_plugin?("vagrant-proxyconf")
+    $http_proxy = ENV['KUBERNETES_HTTP_PROXY'] || ""
+    $https_proxy = ENV['KUBERNETES_HTTPS_PROXY'] || ""
+    $no_proxy = ENV['KUBERNETES_NO_PROXY'] || "127.0.0.1"
+    config.proxy.http     = $http_proxy
+    config.proxy.https    = $https_proxy
+    config.proxy.no_proxy = $no_proxy
+  end
   def setvmboxandurl(config, provider)
     if ENV['KUBERNETES_BOX_NAME'] then
       config.vm.box = ENV['KUBERNETES_BOX_NAME']
@@ -178,6 +192,9 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       v.customize ['set', :id, '--shf-guest-automount', 'off']
       v.customize ['set', :id, '--shf-host', 'on']
 
+      # Synchronize VM clocks to host clock (Avoid certificate invalid issue)
+      v.customize ['set', :id, '--time-sync', 'on']
+
       # Remove all auto-mounted "shared folders"; the result seems to
       # persist between runs (i.e., vagrant halt && vagrant up)
       override.vm.provision :shell, :inline => (%q{
@@ -194,6 +211,58 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
         exit
       }).strip
     end
+
+    # Then try vsphere
+    config.vm.provider :vsphere do |vsphere, override|
+      setvmboxandurl(override, :vsphere)
+
+       #config.vm.hostname = ENV['MASTER_NAME']
+
+       config.ssh.username = ENV['MASTER_USER']
+       config.ssh.password = ENV['MASTER_PASSWD']
+
+       config.ssh.pty = true
+       config.ssh.insert_key = true
+       #config.ssh.private_key_path = '~/.ssh/id_rsa_vsphere'
+      
+      # Don't attempt to update the tools on the image (this can
+      # be done manually if necessary)
+      # vsphere.update_guest_tools = false # v.customize ['set', :id, '--tools-autoupdate', 'off']
+
+      # The vSphere host we're going to connect to
+      vsphere.host = ENV['VAGRANT_VSPHERE_URL']
+
+      # The ESX host for the new VM
+      vsphere.compute_resource_name = ENV['VAGRANT_VSPHERE_RESOURCE_POOL']
+
+      # The resource pool for the new VM
+      #vsphere.resource_pool_name = 'Comp'
+
+      # path to folder where new VM should be created, if not specified template's parent folder will be used
+      vsphere.vm_base_path = ENV['VAGRANT_VSPHERE_BASE_PATH']
+
+      # The template we're going to clone
+      vsphere.template_name = ENV['VAGRANT_VSPHERE_TEMPLATE_NAME']
+
+      # The name of the new machine
+      #vsphere.name = ENV['MASTER_NAME']
+
+      # vSphere login
+      vsphere.user = ENV['VAGRANT_VSPHERE_USERNAME']
+
+      # vSphere password
+      vsphere.password = ENV['VAGRANT_VSPHERE_PASSWORD']
+
+      # cpu count
+      vsphere.cpu_count = $vm_cpus
+
+      # memory in MB
+      vsphere.memory_mb = vm_mem
+
+      # If you don't have SSL configured correctly, set this to 'true'
+      vsphere.insecure = ENV['VAGRANT_VSPHERE_INSECURE']
+    end
+
 
     # Don't attempt to update Virtualbox Guest Additions (requires gcc)
     if Vagrant.has_plugin?("vagrant-vbguest") then

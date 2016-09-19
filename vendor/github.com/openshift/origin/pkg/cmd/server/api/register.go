@@ -53,33 +53,7 @@ func addKnownTypes(scheme *runtime.Scheme) {
 		&OpenIDIdentityProvider{},
 
 		&LDAPSyncConfig{},
+
+		&DefaultAdmissionConfig{},
 	)
 }
-
-func (obj *LDAPSyncConfig) GetObjectKind() unversioned.ObjectKind { return &obj.TypeMeta }
-
-func (obj *OpenIDIdentityProvider) GetObjectKind() unversioned.ObjectKind        { return &obj.TypeMeta }
-func (obj *GoogleIdentityProvider) GetObjectKind() unversioned.ObjectKind        { return &obj.TypeMeta }
-func (obj *GitLabIdentityProvider) GetObjectKind() unversioned.ObjectKind        { return &obj.TypeMeta }
-func (obj *GitHubIdentityProvider) GetObjectKind() unversioned.ObjectKind        { return &obj.TypeMeta }
-func (obj *RequestHeaderIdentityProvider) GetObjectKind() unversioned.ObjectKind { return &obj.TypeMeta }
-func (obj *KeystonePasswordIdentityProvider) GetObjectKind() unversioned.ObjectKind {
-	return &obj.TypeMeta
-}
-func (obj *LDAPPasswordIdentityProvider) GetObjectKind() unversioned.ObjectKind { return &obj.TypeMeta }
-func (obj *HTPasswdPasswordIdentityProvider) GetObjectKind() unversioned.ObjectKind {
-	return &obj.TypeMeta
-}
-func (obj *DenyAllPasswordIdentityProvider) GetObjectKind() unversioned.ObjectKind {
-	return &obj.TypeMeta
-}
-func (obj *AllowAllPasswordIdentityProvider) GetObjectKind() unversioned.ObjectKind {
-	return &obj.TypeMeta
-}
-func (obj *BasicAuthPasswordIdentityProvider) GetObjectKind() unversioned.ObjectKind {
-	return &obj.TypeMeta
-}
-
-func (obj *SessionSecrets) GetObjectKind() unversioned.ObjectKind { return &obj.TypeMeta }
-func (obj *NodeConfig) GetObjectKind() unversioned.ObjectKind     { return &obj.TypeMeta }
-func (obj *MasterConfig) GetObjectKind() unversioned.ObjectKind   { return &obj.TypeMeta }

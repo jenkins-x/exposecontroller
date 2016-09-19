@@ -29,6 +29,10 @@ type Args struct {
 	// the respective types.go. We still need GroupVersions in the struct because
 	// we need an order.
 	GroupVersionToInputPath map[unversioned.GroupVersion]string
+
+	// Overrides for which types should be included in the client.
+	IncludedTypesOverrides map[unversioned.GroupVersion][]string
+
 	// ClientsetName is the name of the clientset to be generated. It's
 	// populated from command-line arguments.
 	ClientsetName string
@@ -41,4 +45,6 @@ type Args struct {
 	ClientsetOnly bool
 	// FakeClient determines if client-gen generates the fake clients.
 	FakeClient bool
+	// CmdArgs is the command line arguments supplied when the client-gen is called.
+	CmdArgs string
 }

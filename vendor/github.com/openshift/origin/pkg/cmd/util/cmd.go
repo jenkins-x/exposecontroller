@@ -20,6 +20,16 @@ import (
 // ErrExit is a marker interface for cli commands indicating that the response has been processed
 var ErrExit = fmt.Errorf("exit directly")
 
+// ReplaceCommandName recursively processes the examples in a given command to change a hardcoded
+// command name (like 'kubectl' to the appropriate target name). It returns c.
+func ReplaceCommandName(from, to string, c *cobra.Command) *cobra.Command {
+	c.Example = strings.Replace(c.Example, from, to, -1)
+	for _, sub := range c.Commands() {
+		ReplaceCommandName(from, to, sub)
+	}
+	return c
+}
+
 // RequireNoArguments exits with a usage error if extra arguments are provided.
 func RequireNoArguments(c *cobra.Command, args []string) {
 	if len(args) > 0 {
@@ -82,7 +92,7 @@ func convertItemsForDisplay(objs []runtime.Object, preferredVersions ...unversio
 
 	for i := range objs {
 		obj := objs[i]
-		kind, err := kapi.Scheme.ObjectKind(obj)
+		kind, _, err := kapi.Scheme.ObjectKind(obj)
 		if err != nil {
 			return nil, err
 		}
@@ -110,7 +120,7 @@ func convertItemsForDisplay(objs []runtime.Object, preferredVersions ...unversio
 			}
 		}
 
-		convertedObject, err := kapi.Scheme.ConvertToVersion(obj, actualOutputVersion.String())
+		convertedObject, err := kapi.Scheme.ConvertToVersion(obj, actualOutputVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -135,7 +145,7 @@ func convertItemsForDisplayFromDefaultCommand(cmd *cobra.Command, objs []runtime
 
 // VersionedPrintObject handles printing an object in the appropriate version by looking at 'output-version'
 // on the command
-func VersionedPrintObject(fn func(*cobra.Command, runtime.Object, io.Writer) error, c *cobra.Command, out io.Writer) func(runtime.Object) error {
+func VersionedPrintObject(fn func(*cobra.Command, meta.RESTMapper, runtime.Object, io.Writer) error, c *cobra.Command, mapper meta.RESTMapper, out io.Writer) func(runtime.Object) error {
 	return func(obj runtime.Object) error {
 		// TODO: fold into the core printer functionality (preferred output version)
 		if list, ok := obj.(*kapi.List); ok {
@@ -150,6 +160,6 @@ func VersionedPrintObject(fn func(*cobra.Command, runtime.Object, io.Writer) err
 			}
 			obj = result[0]
 		}
-		return fn(c, obj, out)
+		return fn(c, mapper, obj, out)
 	}
 }

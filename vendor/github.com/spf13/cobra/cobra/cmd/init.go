@@ -14,6 +14,7 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"strings"
@@ -29,8 +30,8 @@ func init() {
 // initialize Command
 var initCmd = &cobra.Command{
 	Use:     "init [name]",
-	Aliases: []string{"initialize", "initalise", "create"},
-	Short:   "Initalize a Cobra Application",
+	Aliases: []string{"initialize", "initialise", "create"},
+	Short:   "Initialize a Cobra Application",
 	Long: `Initialize (cobra init) will create a new application, with a license
 and the appropriate structure for a Cobra-based CLI application.
 
@@ -41,7 +42,7 @@ and the appropriate structure for a Cobra-based CLI application.
   * If an absolute path is provided, it will be created;
   * If the directory already exists but is empty, it will be used.
 
-Init will not use an exiting directory with contents.`,
+Init will not use an existing directory with contents.`,
 
 	Run: func(cmd *cobra.Command, args []string) {
 		switch len(args) {
@@ -55,11 +56,11 @@ Init will not use an exiting directory with contents.`,
 			er("init doesn't support more than 1 parameter")
 		}
 		guessProjectPath()
-		initalizePath(projectPath)
+		initializePath(projectPath)
 	},
 }
 
-func initalizePath(path string) {
+func initializePath(path string) {
 	b, err := exists(path)
 	if err != nil {
 		er(err)
@@ -89,27 +90,34 @@ func initalizePath(path string) {
 func createLicenseFile() {
 	lic := getLicense()
 
-	template := lic.Text
+	// Don't bother writing a LICENSE file if there is no text.
+	if lic.Text != "" {
+		data := make(map[string]interface{})
 
-	var data map[string]interface{}
-	data = make(map[string]interface{})
+		// Try to remove the email address, if any
+		data["copyright"] = strings.Split(copyrightLine(), " <")[0]
 
-	// Try to remove the email address, if any
-	data["copyright"] = strings.Split(copyrightLine(), " <")[0]
+		data["appName"] = projectName()
 
-	err := writeTemplateToFile(ProjectPath(), "LICENSE", template, data)
-	_ = err
-	// if err != nil {
-	// 	er(err)
-	// }
+		// Generate license template from text and data.
+		r, _ := templateToReader(lic.Text, data)
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(r)
+
+		err := writeTemplateToFile(ProjectPath(), "LICENSE", buf.String(), data)
+		_ = err
+		// if err != nil {
+		// 	er(err)
+		// }
+	}
 }
 
 func createMainFile() {
 	lic := getLicense()
 
 	template := `{{ comment .copyright }}
-{{ comment .license }}
-
+{{if .license}}{{ comment .license }}
+{{end}}
 package main
 
 import "{{ .importpath }}"
@@ -118,11 +126,17 @@ func main() {
 	cmd.Execute()
 }
 `
-	var data map[string]interface{}
-	data = make(map[string]interface{})
+	data := make(map[string]interface{})
 
 	data["copyright"] = copyrightLine()
-	data["license"] = lic.Header
+	data["appName"] = projectName()
+
+	// Generate license template from header and data.
+	r, _ := templateToReader(lic.Header, data)
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(r)
+	data["license"] = buf.String()
+
 	data["importpath"] = guessImportPath() + "/" + guessCmdDir()
 
 	err := writeTemplateToFile(ProjectPath(), "main.go", template, data)
@@ -136,8 +150,8 @@ func createRootCmdFile() {
 	lic := getLicense()
 
 	template := `{{ comment .copyright }}
-{{ comment .license }}
-
+{{if .license}}{{ comment .license }}
+{{end}}
 package cmd
 
 import (
@@ -150,7 +164,7 @@ import (
 {{if .viper}}
 var cfgFile string
 {{ end }}
-// This represents the base command when called without any subcommands
+// RootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{
 	Use:   "{{ .appName }}",
 	Short: "A brief description of your application",
@@ -206,12 +220,17 @@ func initConfig() {
 }
 {{ end }}`
 
-	var data map[string]interface{}
-	data = make(map[string]interface{})
+	data := make(map[string]interface{})
 
 	data["copyright"] = copyrightLine()
-	data["license"] = lic.Header
 	data["appName"] = projectName()
+
+	// Generate license template from header and data.
+	r, _ := templateToReader(lic.Header, data)
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(r)
+	data["license"] = buf.String()
+
 	data["viper"] = viper.GetBool("useViper")
 
 	err := writeTemplateToFile(ProjectPath()+string(os.PathSeparator)+guessCmdDir(), "root.go", template, data)

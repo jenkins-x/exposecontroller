@@ -160,7 +160,7 @@ KUBE_DNS_DOMAIN="cluster.local"
 KUBE_DNS_REPLICAS=1
 ```
 
-To know more on DNS service you can look [here](http://issue.k8s.io/6667). Related documents can be found [here](../../cluster/addons/dns/#how-do-i-configure-it)
+To know more on DNS service you can look [here](http://issue.k8s.io/6667). Related documents can be found [here](../../build/kube-dns/#how-do-i-configure-it)
 
 
 

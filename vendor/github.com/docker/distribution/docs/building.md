@@ -6,13 +6,13 @@ keywords = ["registry, on-prem, images, tags, repository, distribution, build, r
 +++
 <![end-metadata]-->
 
-# Building the registry source
+# Building the registry source
 
 ## Use-case
 
 This is useful if you intend to actively work on the registry.
 
-### Alternatives
+### Alternatives
 
 Most people should use the [official Registry docker image](https://hub.docker.com/r/library/registry/).
 
@@ -60,7 +60,7 @@ binary can then be run with the following:
 The registry can be run with the default config using the following
 incantation:
 
-    $ $GOPATH/bin/registry $GOPATH/src/github.com/docker/distribution/cmd/registry/config-example.yml
+    $ $GOPATH/bin/registry serve $GOPATH/src/github.com/docker/distribution/cmd/registry/config-example.yml
     INFO[0000] endpoint local-5003 disabled, skipping        app.id=34bbec38-a91a-494a-9a3f-b72f9010081f version=v2.0.0-alpha.1+unknown
     INFO[0000] endpoint local-8083 disabled, skipping        app.id=34bbec38-a91a-494a-9a3f-b72f9010081f version=v2.0.0-alpha.1+unknown
     INFO[0000] listening on :5000                            app.id=34bbec38-a91a-494a-9a3f-b72f9010081f version=v2.0.0-alpha.1+unknown
@@ -85,7 +85,7 @@ Please install the following into `GOPATH` for it to work:
 Once these commands are available in the `GOPATH`, run `make` to get a full
 build:
 
-    $ GOPATH=`godep path`:$GOPATH make
+    $ make
     + clean
     + fmt
     + vet
@@ -120,39 +120,7 @@ the registry binary generated in the "./bin" directory:
     $ ./bin/registry -version
     ./bin/registry github.com/docker/distribution v2.0.0-alpha.2-80-g16d8b2c.m
 
-### Developing
-
-The above approaches are helpful for small experimentation. If more complex
-tasks are at hand, it is recommended to employ the full power of `godep`.
-
-The Makefile is designed to have its `GOPATH` defined externally. This allows
-one to experiment with various development environment setups. This is
-primarily useful when testing upstream bugfixes, by modifying local code. This
-can be demonstrated using `godep` to migrate the `GOPATH` to use the specified
-dependencies. The `GOPATH` can be migrated to the current package versions
-declared in `Godeps` with the following command:
-
-    godep restore
-
-> **WARNING:** This command will checkout versions of the code specified in
-> Godeps/Godeps.json, modifying the contents of `GOPATH`. If this is
-> undesired, it is recommended to create a workspace devoted to work on the
-> _Distribution_ project.
-
-With a successful run of the above command, one can now use `make` without
-specifying the `GOPATH`:
-
-    make
-
-If that is successful, standard `go` commands, such as `go test` should work,
-per package, without issue.
-
 ### Optional build tags
 
 Optional [build tags](http://golang.org/pkg/go/build/) can be provided using
 the environment variable `DOCKER_BUILDTAGS`.
-
-To enable the [Ceph RADOS storage driver](storage-drivers/rados.md)
-(librados-dev and librbd-dev will be required to build the bindings):
-
-    export DOCKER_BUILDTAGS='include_rados'

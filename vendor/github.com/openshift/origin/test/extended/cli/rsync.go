@@ -1,17 +1,20 @@
 package cli
 
 import (
+	"bufio"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	g "github.com/onsi/ginkgo"
 	o "github.com/onsi/gomega"
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/labels"
+	e2e "k8s.io/kubernetes/test/e2e/framework"
 
 	exutil "github.com/openshift/origin/test/extended/util"
 )
@@ -47,8 +50,144 @@ var _ = g.Describe("[cli][Slow] can use rsync to upload files to pods", func() {
 		podName = pods.Items[0].Name
 	})
 
-	g.Describe("copy by strategy", func() {
+	g.Describe("using a watch", func() {
+		g.It("should watch for changes and rsync them", func() {
+			g.By("Creating a local temporary directory")
+			tempDir, err := ioutil.TempDir("", "rsync")
+			o.Expect(err).NotTo(o.HaveOccurred())
 
+			g.By("creating a subdirectory in that temp directory")
+			subdir1 := filepath.Join(tempDir, "subdir1")
+			err = os.Mkdir(subdir1, 0777)
+			o.Expect(err).NotTo(o.HaveOccurred())
+
+			g.By("creating a file in the subdirectory")
+			subdir1file1 := filepath.Join(subdir1, "file1")
+			_, err = os.Create(subdir1file1)
+			o.Expect(err).NotTo(o.HaveOccurred())
+
+			g.By("Creating a scratch directory in the pod")
+			_, err = oc.Run("rsh").Args(podName, "mkdir", "/tmp/rsync").Output()
+			o.Expect(err).NotTo(o.HaveOccurred())
+
+			g.By(fmt.Sprintf("Calling oc rsync %s/ %s:/tmp/rsync --delete --watch", tempDir, podName))
+			cmd, stdout, stderr, err := oc.Run("rsync").Args(
+				fmt.Sprintf("%s/", tempDir),
+				fmt.Sprintf("%s:/tmp/rsync", podName),
+				"--loglevel=5",
+				"--delete",
+				"--watch").Background()
+
+			failed := true
+			defer cmd.Process.Kill()
+			defer func() {
+				if failed {
+					writer := cmd.Stdout.(*bufio.Writer)
+					writer.Flush()
+					writer2 := cmd.Stderr.(*bufio.Writer)
+					writer2.Flush()
+					fmt.Fprintf(g.GinkgoWriter, "Dumping rsync output: \n%s\n%s\n", stdout.String(), stderr.String())
+				}
+			}()
+			o.Expect(err).NotTo(o.HaveOccurred())
+
+			var result string
+			found := false
+			for i := 0; i < 12; i++ {
+				g.By("Verifying that files are copied to the container")
+				result, _ = oc.Run("rsh").Args(podName, "ls", "/tmp/rsync/subdir1").Output()
+				if strings.Contains(result, "file1") {
+					found = true
+					break
+				}
+				time.Sleep(5 * time.Second)
+			}
+			if !found {
+				e2e.Failf("Directory does not contain expected files: \n%s", result)
+			}
+
+			g.By("renaming file1 to file2")
+			subdir1file2 := filepath.Join(subdir1, "file2")
+			err = os.Rename(subdir1file1, subdir1file2)
+			o.Expect(err).NotTo(o.HaveOccurred())
+
+			found = false
+			for i := 0; i < 12; i++ {
+				g.By("Verifying that files are copied to the container")
+				result, _ = oc.Run("rsh").Args(podName, "ls", "/tmp/rsync/subdir1").Output()
+				if strings.Contains(result, "file2") && !strings.Contains(result, "file1") {
+					found = true
+					break
+				}
+				time.Sleep(5 * time.Second)
+			}
+			if !found {
+				e2e.Failf("Directory does not contain expected files: \n%s", result)
+			}
+
+			g.By("removing file2")
+			err = os.Remove(subdir1file2)
+			o.Expect(err).NotTo(o.HaveOccurred())
+
+			found = false
+			for i := 0; i < 12; i++ {
+				g.By("Verifying that files are copied to the container")
+				result, _ = oc.Run("rsh").Args(podName, "ls", "/tmp/rsync/subdir1").Output()
+				if !strings.Contains(result, "file2") {
+					found = true
+					break
+				}
+				time.Sleep(5 * time.Second)
+			}
+			if !found {
+				e2e.Failf("Directory does not contain expected files: \n%s", result)
+			}
+
+			g.By("renaming subdir1 to subdir2")
+			subdir2 := filepath.Join(tempDir, "subdir2")
+			err = os.Rename(subdir1, subdir2)
+			o.Expect(err).NotTo(o.HaveOccurred())
+
+			g.By("creating a file in the subdir2")
+			subdir2file1 := filepath.Join(subdir2, "file1")
+			_, err = os.Create(subdir2file1)
+			o.Expect(err).NotTo(o.HaveOccurred())
+
+			found = false
+			for i := 0; i < 12; i++ {
+				g.By("Verifying that files are copied to the container")
+				result, _ = oc.Run("rsh").Args(podName, "ls", "/tmp/rsync/subdir2").Output()
+				if !strings.Contains(result, "file1") {
+					found = true
+					break
+				}
+				time.Sleep(5 * time.Second)
+			}
+			if !found {
+				e2e.Failf("Directory does not contain expected files: \n%s", result)
+			}
+
+			g.By("removing subdir2")
+			err = os.RemoveAll(subdir2)
+			o.Expect(err).NotTo(o.HaveOccurred())
+
+			found = false
+			for i := 0; i < 12; i++ {
+				g.By("Verifying that files are copied to the container")
+				result, _ = oc.Run("rsh").Args(podName, "ls", "/tmp/rsync").Output()
+				if !strings.Contains(result, "subdir2") {
+					found = true
+					break
+				}
+				time.Sleep(5 * time.Second)
+			}
+			if !found {
+				e2e.Failf("Directory does not contain expected files: \n%s", result)
+			}
+			failed = false
+		})
+	})
+	g.Describe("copy by strategy", func() {
 		testRsyncFn := func(strategy string) func() {
 			return func() {
 				g.By(fmt.Sprintf("Calling oc rsync %s %s:/tmp --strategy=%s", sourcePath1, podName, strategy))
@@ -162,6 +301,23 @@ var _ = g.Describe("[cli][Slow] can use rsync to upload files to pods", func() {
 			o.Expect(result).NotTo(o.ContainSubstring("image-streams-rhel7.json"))
 		})
 
+		g.It("should honor multiple --exclude flags", func() {
+			g.By(fmt.Sprintf("Calling oc rsync %s %s:/tmp --exclude=application-template-custombuild.json --exclude=application-template-dockerbuild.json", sourcePath2, podName))
+			err := oc.Run("rsync").Args(
+				sourcePath2,
+				fmt.Sprintf("%s:/tmp", podName),
+				"--exclude=application-template-custombuild.json",
+				"--exclude=application-template-dockerbuild.json").Execute()
+			o.Expect(err).NotTo(o.HaveOccurred())
+
+			g.By("Verifying that files are copied to the container")
+			result, err := oc.Run("rsh").Args(podName, "ls", "/tmp/sample-app").Output()
+			o.Expect(err).NotTo(o.HaveOccurred())
+			o.Expect(result).NotTo(o.ContainSubstring("application-template-custombuild.json"))
+			o.Expect(result).NotTo(o.ContainSubstring("application-template-dockerbuild.json"))
+			o.Expect(result).To(o.ContainSubstring("application-template-stibuild.json"))
+		})
+
 		g.It("should honor the --include flag", func() {
 			g.By(fmt.Sprintf("Calling oc rsync %s %s:/tmp --exclude=*.json --include=image-streams-rhel7.json", sourcePath1, podName))
 			err := oc.Run("rsync").Args(
@@ -176,6 +332,24 @@ var _ = g.Describe("[cli][Slow] can use rsync to upload files to pods", func() {
 			o.Expect(err).NotTo(o.HaveOccurred())
 			o.Expect(result).To(o.ContainSubstring("image-streams-rhel7.json"))
 			o.Expect(result).NotTo(o.ContainSubstring("image-streams-centos7.json"))
+		})
+
+		g.It("should honor multiple --include flags", func() {
+			g.By(fmt.Sprintf("Calling oc rsync %s %s:/tmp --exclude=*.json --include=application-template-custombuild.json --include=application-template-dockerbuild.json", sourcePath2, podName))
+			err := oc.Run("rsync").Args(
+				sourcePath2,
+				fmt.Sprintf("%s:/tmp", podName),
+				"--exclude=*.json",
+				"--include=application-template-custombuild.json",
+				"--include=application-template-dockerbuild.json").Execute()
+			o.Expect(err).NotTo(o.HaveOccurred())
+
+			g.By("Verifying that files are copied to the container")
+			result, err := oc.Run("rsh").Args(podName, "ls", "/tmp/sample-app").Output()
+			o.Expect(err).NotTo(o.HaveOccurred())
+			o.Expect(result).To(o.ContainSubstring("application-template-custombuild.json"))
+			o.Expect(result).To(o.ContainSubstring("application-template-dockerbuild.json"))
+			o.Expect(result).NotTo(o.ContainSubstring("application-template-stibuild.json"))
 		})
 
 		g.It("should honor the --progress flag", func() {
@@ -219,5 +393,4 @@ var _ = g.Describe("[cli][Slow] can use rsync to upload files to pods", func() {
 			o.Expect(err).NotTo(o.HaveOccurred())
 		})
 	})
-
 })

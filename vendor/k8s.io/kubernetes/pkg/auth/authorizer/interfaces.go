@@ -25,14 +25,8 @@ import (
 // Attributes is an interface used by an Authorizer to get information about a request
 // that is used to make an authorization decision.
 type Attributes interface {
-	// The user string which the request was authenticated as, or empty if
-	// no authentication occurred and the request was allowed to proceed.
-	GetUserName() string
-
-	// The list of group names the authenticated user is a member of. Can be
-	// empty if the authenticated user is not in any groups, or if no
-	// authentication occurred.
-	GetGroups() []string
+	// GetUser returns the user.Info object to authorize
+	GetUser() user.Info
 
 	// GetVerb returns the kube verb associated with API requests (this includes get, list, watch, create, update, patch, delete, and proxy),
 	// or the lowercased HTTP verb associated with non-API requests (this includes get, put, post, patch, and delete)
@@ -48,8 +42,18 @@ type Attributes interface {
 	// The kind of object, if a request is for a REST object.
 	GetResource() string
 
+	// GetSubresource returns the subresource being requested, if present
+	GetSubresource() string
+
+	// GetName returns the name of the object as parsed off the request.  This will not be present for all request types, but
+	// will be present for: get, update, delete
+	GetName() string
+
 	// The group of the resource, if a request is for a REST object.
 	GetAPIGroup() string
+
+	// GetAPIVersion returns the version of the group requested, if a request is for a REST object.
+	GetAPIVersion() string
 
 	// IsResourceRequest returns true for requests to API resources, like /api/v1/nodes,
 	// and false for non-resource endpoints like /api, /healthz, and /swaggerapi
@@ -83,17 +87,16 @@ type AttributesRecord struct {
 	Verb            string
 	Namespace       string
 	APIGroup        string
+	APIVersion      string
 	Resource        string
+	Subresource     string
+	Name            string
 	ResourceRequest bool
 	Path            string
 }
 
-func (a AttributesRecord) GetUserName() string {
-	return a.User.GetName()
-}
-
-func (a AttributesRecord) GetGroups() []string {
-	return a.User.GetGroups()
+func (a AttributesRecord) GetUser() user.Info {
+	return a.User
 }
 
 func (a AttributesRecord) GetVerb() string {
@@ -112,8 +115,20 @@ func (a AttributesRecord) GetResource() string {
 	return a.Resource
 }
 
+func (a AttributesRecord) GetSubresource() string {
+	return a.Subresource
+}
+
+func (a AttributesRecord) GetName() string {
+	return a.Name
+}
+
 func (a AttributesRecord) GetAPIGroup() string {
 	return a.APIGroup
+}
+
+func (a AttributesRecord) GetAPIVersion() string {
+	return a.APIVersion
 }
 
 func (a AttributesRecord) IsResourceRequest() bool {

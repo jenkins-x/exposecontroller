@@ -4,6 +4,7 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	extensionsv1beta1 "k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
+	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/watch"
 
@@ -25,8 +26,10 @@ type DeploymentConfigInterface interface {
 	Watch(opts kapi.ListOptions) (watch.Interface, error)
 	Generate(name string) (*deployapi.DeploymentConfig, error)
 	Rollback(config *deployapi.DeploymentConfigRollback) (*deployapi.DeploymentConfig, error)
+	RollbackDeprecated(config *deployapi.DeploymentConfigRollback) (*deployapi.DeploymentConfig, error)
 	GetScale(name string) (*extensions.Scale, error)
 	UpdateScale(scale *extensions.Scale) (*extensions.Scale, error)
+	UpdateStatus(config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error)
 }
 
 // deploymentConfigs implements DeploymentConfigsNamespacer interface
@@ -98,7 +101,22 @@ func (c *deploymentConfigs) Generate(name string) (result *deployapi.DeploymentC
 	return
 }
 
+// Rollback rolls a deploymentConfig back to a previous configuration
 func (c *deploymentConfigs) Rollback(config *deployapi.DeploymentConfigRollback) (result *deployapi.DeploymentConfig, err error) {
+	result = &deployapi.DeploymentConfig{}
+	err = c.r.Post().
+		Namespace(c.ns).
+		Resource("deploymentConfigs").
+		Name(config.Name).
+		SubResource("rollback").
+		Body(config).
+		Do().
+		Into(result)
+	return
+}
+
+// RollbackDeprecated rolls a deploymentConfig back to a previous configuration
+func (c *deploymentConfigs) RollbackDeprecated(config *deployapi.DeploymentConfigRollback) (result *deployapi.DeploymentConfig, err error) {
 	result = &deployapi.DeploymentConfig{}
 	err = c.r.Post().
 		Namespace(c.ns).
@@ -109,14 +127,14 @@ func (c *deploymentConfigs) Rollback(config *deployapi.DeploymentConfigRollback)
 	return
 }
 
-// Get returns information about a particular deploymentConfig
+// GetScale returns information about a particular deploymentConfig via its scale subresource
 func (c *deploymentConfigs) GetScale(name string) (result *extensions.Scale, err error) {
 	result = &extensions.Scale{}
 	err = c.r.Get().Namespace(c.ns).Resource("deploymentConfigs").Name(name).SubResource("scale").Do().Into(result)
 	return
 }
 
-// Update updates an existing deploymentConfig
+// UpdateScale scales an existing deploymentConfig via its scale subresource
 func (c *deploymentConfigs) UpdateScale(scale *extensions.Scale) (result *extensions.Scale, err error) {
 	result = &extensions.Scale{}
 
@@ -128,4 +146,31 @@ func (c *deploymentConfigs) UpdateScale(scale *extensions.Scale) (result *extens
 
 	err = c.r.Put().Namespace(c.ns).Resource("deploymentConfigs").Name(scale.Name).SubResource("scale").Body(encodedBytes).Do().Into(result)
 	return
+}
+
+// UpdateStatus updates the status for an existing deploymentConfig.
+func (c *deploymentConfigs) UpdateStatus(deploymentConfig *deployapi.DeploymentConfig) (result *deployapi.DeploymentConfig, err error) {
+	result = &deployapi.DeploymentConfig{}
+	err = c.r.Put().Namespace(c.ns).Resource("deploymentConfigs").Name(deploymentConfig.Name).SubResource("status").Body(deploymentConfig).Do().Into(result)
+	return
+}
+
+type updateConfigFunc func(d *deployapi.DeploymentConfig)
+
+// UpdateConfigWithRetries will try to update a deployment config and ignore any update conflicts.
+func UpdateConfigWithRetries(dn DeploymentConfigsNamespacer, namespace, name string, applyUpdate updateConfigFunc) (*deployapi.DeploymentConfig, error) {
+	var config *deployapi.DeploymentConfig
+
+	resultErr := kclient.RetryOnConflict(kclient.DefaultBackoff, func() error {
+		var err error
+		config, err = dn.DeploymentConfigs(namespace).Get(name)
+		if err != nil {
+			return err
+		}
+		// Apply the update, then attempt to push it to the apiserver.
+		applyUpdate(config)
+		config, err = dn.DeploymentConfigs(namespace).Update(config)
+		return err
+	})
+	return config, resultErr
 }

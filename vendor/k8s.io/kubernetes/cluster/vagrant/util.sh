@@ -53,6 +53,7 @@ function verify-prereqs {
       prlctl parallels vagrant-parallels
       VBoxManage virtualbox ''
       virsh libvirt vagrant-libvirt
+      '' vsphere vagrant-vsphere
   )
   local provider_found=''
   local provider_bin
@@ -294,7 +295,10 @@ function kube-up {
    vagrant ssh master -- sudo cat /srv/kubernetes/kubecfg.key >"${KUBE_KEY}" 2>/dev/null
    vagrant ssh master -- sudo cat /srv/kubernetes/ca.crt >"${CA_CERT}" 2>/dev/null
 
+   # Update the user's kubeconfig to include credentials for this apiserver.
    create-kubeconfig
+
+   create-kubeconfig-for-federation
   )
 
   verify-cluster
@@ -375,16 +379,6 @@ function ssh-to-node {
   }
 
   vagrant ssh "${machine}" -c "${cmd}"
-}
-
-# Restart the kube-proxy on a node ($1)
-function restart-kube-proxy {
-  ssh-to-node "$1" "sudo systemctl restart kube-proxy"
-}
-
-# Restart the apiserver
-function restart-apiserver {
-  ssh-to-node "$1" "sudo systemctl restart kube-apiserver"
 }
 
 # Perform preparations required to run e2e tests

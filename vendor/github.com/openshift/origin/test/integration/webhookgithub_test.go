@@ -1,5 +1,3 @@
-// +build integration
-
 package integration
 
 import (
@@ -21,6 +19,7 @@ import (
 
 func TestWebhookGitHubPushWithImage(t *testing.T) {
 	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMaster()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -42,7 +41,9 @@ func TestWebhookGitHubPushWithImage(t *testing.T) {
 	}
 
 	clusterAdminKubeClient, err := testutil.GetClusterAdminKubeClient(clusterAdminKubeConfig)
-	checkErr(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := testserver.WaitForServiceAccounts(clusterAdminKubeClient, testutil.Namespace(), []string{bootstrappolicy.BuilderServiceAccountName, bootstrappolicy.DefaultServiceAccountName}); err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -96,6 +97,8 @@ func TestWebhookGitHubPushWithImage(t *testing.T) {
 
 	for _, s := range []string{
 		"/oapi/v1/namespaces/" + testutil.Namespace() + "/buildconfigs/pushbuild/webhooks/secret101/github",
+		"/oapi/v1/namespaces/" + testutil.Namespace() + "/buildconfigs/pushbuild/webhooks/secret100/github",
+		"/oapi/v1/namespaces/" + testutil.Namespace() + "/buildconfigs/pushbuild/webhooks/secret102/github",
 	} {
 
 		// trigger build event sending push notification
@@ -104,7 +107,7 @@ func TestWebhookGitHubPushWithImage(t *testing.T) {
 		event := <-watch.ResultChan()
 		actual := event.Object.(*buildapi.Build)
 
-		// FIXME: I think the build creation is fast and in some situlation we miss
+		// FIXME: I think the build creation is fast and in some situation we miss
 		// the BuildPhaseNew here. Note that this is not a bug, in future we should
 		// move this to use go routine to capture all events.
 		if actual.Status.Phase != buildapi.BuildPhaseNew && actual.Status.Phase != buildapi.BuildPhasePending {
@@ -119,6 +122,7 @@ func TestWebhookGitHubPushWithImage(t *testing.T) {
 
 func TestWebhookGitHubPushWithImageStream(t *testing.T) {
 	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMaster()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -135,7 +139,9 @@ func TestWebhookGitHubPushWithImageStream(t *testing.T) {
 	}
 
 	clusterAdminKubeClient, err := testutil.GetClusterAdminKubeClient(clusterAdminKubeConfig)
-	checkErr(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	err = testutil.CreateNamespace(clusterAdminKubeConfig, testutil.Namespace())
 	if err != nil {
@@ -217,6 +223,7 @@ func TestWebhookGitHubPushWithImageStream(t *testing.T) {
 
 func TestWebhookGitHubPing(t *testing.T) {
 	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMaster()
 	if err != nil {
 		t.Fatalf("unable to start master: %v", err)
@@ -249,6 +256,8 @@ func TestWebhookGitHubPing(t *testing.T) {
 
 	for _, s := range []string{
 		"/oapi/v1/namespaces/" + testutil.Namespace() + "/buildconfigs/pushbuild/webhooks/secret101/github",
+		"/oapi/v1/namespaces/" + testutil.Namespace() + "/buildconfigs/pushbuild/webhooks/secret100/github",
+		"/oapi/v1/namespaces/" + testutil.Namespace() + "/buildconfigs/pushbuild/webhooks/secret102/github",
 	} {
 		// trigger build event sending push notification
 		clusterAdminClientConfig, err := testutil.GetClusterAdminClientConfig(clusterAdminKubeConfig)
@@ -271,7 +280,7 @@ func TestWebhookGitHubPing(t *testing.T) {
 }
 
 func postFile(client restclient.HTTPClient, event, filename, url string, expStatusCode int, t *testing.T) {
-	data, err := ioutil.ReadFile("../../pkg/build/webhook/github/fixtures/" + filename)
+	data, err := ioutil.ReadFile("../../pkg/build/webhook/github/testdata/" + filename)
 	if err != nil {
 		t.Fatalf("Failed to open %s: %v", filename, err)
 	}
@@ -288,7 +297,7 @@ func postFile(client restclient.HTTPClient, event, filename, url string, expStat
 	}
 	body, _ := ioutil.ReadAll(resp.Body)
 	if resp.StatusCode != expStatusCode {
-		t.Errorf("Wrong response code, expecting %d, got %s: %s!", expStatusCode, resp.StatusCode, string(body))
+		t.Errorf("Wrong response code, expecting %d, got %d: %s!", expStatusCode, resp.StatusCode, string(body))
 	}
 }
 
@@ -298,6 +307,7 @@ func mockBuildConfigImageParms(imageName, imageStream, imageTag string) *buildap
 			Name: "pushbuild",
 		},
 		Spec: buildapi.BuildConfigSpec{
+			RunPolicy: buildapi.BuildRunPolicyParallel,
 			Triggers: []buildapi.BuildTriggerPolicy{
 				{
 					Type: buildapi.GitHubWebHookBuildTriggerType,
@@ -305,8 +315,20 @@ func mockBuildConfigImageParms(imageName, imageStream, imageTag string) *buildap
 						Secret: "secret101",
 					},
 				},
+				{
+					Type: buildapi.GitHubWebHookBuildTriggerType,
+					GitHubWebHook: &buildapi.WebHookTrigger{
+						Secret: "secret100",
+					},
+				},
+				{
+					Type: buildapi.GitHubWebHookBuildTriggerType,
+					GitHubWebHook: &buildapi.WebHookTrigger{
+						Secret: "secret102",
+					},
+				},
 			},
-			BuildSpec: buildapi.BuildSpec{
+			CommonSpec: buildapi.CommonSpec{
 				Source: buildapi.BuildSource{
 					Git: &buildapi.GitBuildSource{
 						URI: "http://my.docker/build",
@@ -338,6 +360,7 @@ func mockBuildConfigImageStreamParms(imageName, imageStream, imageTag string) *b
 			Name: "pushbuild",
 		},
 		Spec: buildapi.BuildConfigSpec{
+			RunPolicy: buildapi.BuildRunPolicyParallel,
 			Triggers: []buildapi.BuildTriggerPolicy{
 				{
 					Type: buildapi.GitHubWebHookBuildTriggerType,
@@ -345,8 +368,20 @@ func mockBuildConfigImageStreamParms(imageName, imageStream, imageTag string) *b
 						Secret: "secret101",
 					},
 				},
+				{
+					Type: buildapi.GitHubWebHookBuildTriggerType,
+					GitHubWebHook: &buildapi.WebHookTrigger{
+						Secret: "secret100",
+					},
+				},
+				{
+					Type: buildapi.GitHubWebHookBuildTriggerType,
+					GitHubWebHook: &buildapi.WebHookTrigger{
+						Secret: "secret102",
+					},
+				},
 			},
-			BuildSpec: buildapi.BuildSpec{
+			CommonSpec: buildapi.CommonSpec{
 				Source: buildapi.BuildSource{
 					Git: &buildapi.GitBuildSource{
 						URI: "http://my.docker/build",

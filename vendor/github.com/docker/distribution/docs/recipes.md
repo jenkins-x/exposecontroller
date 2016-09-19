@@ -3,6 +3,9 @@
 title = "Recipes"
 description = "Fun stuff to do with your registry"
 keywords = ["registry, on-prem, images, tags, repository, distribution, recipes, advanced"]
+[menu.main]
+parent="smn_registry"
+weight=7
 +++
 <![end-metadata]-->
 
@@ -12,7 +15,7 @@ You will find here a list of "recipes", end-to-end scenarios for exotic or other
 
 Most users are not expected to have a use for these.
 
-## Requirements
+## Requirements
 
 You should have followed entirely the basic [deployment guide](deploying.md).
 

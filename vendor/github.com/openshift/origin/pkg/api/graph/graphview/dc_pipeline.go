@@ -63,10 +63,13 @@ func NewDeploymentConfigPipeline(g osgraph.Graph, dcNode *deploygraph.Deployment
 
 	dcPipeline.ActiveDeployment, dcPipeline.InactiveDeployments = deployedges.RelevantDeployments(g, dcNode)
 	for _, rc := range dcPipeline.InactiveDeployments {
-		covered.Insert(rc.ID())
+		_, covers := NewReplicationController(g, rc)
+		covered.Insert(covers.List()...)
 	}
+
 	if dcPipeline.ActiveDeployment != nil {
-		covered.Insert(dcPipeline.ActiveDeployment.ID())
+		_, covers := NewReplicationController(g, dcPipeline.ActiveDeployment)
+		covered.Insert(covers.List()...)
 	}
 
 	return dcPipeline, covered
@@ -77,5 +80,5 @@ type SortedDeploymentConfigPipeline []DeploymentConfigPipeline
 func (m SortedDeploymentConfigPipeline) Len() int      { return len(m) }
 func (m SortedDeploymentConfigPipeline) Swap(i, j int) { m[i], m[j] = m[j], m[i] }
 func (m SortedDeploymentConfigPipeline) Less(i, j int) bool {
-	return CompareObjectMeta(&m[i].Deployment.ObjectMeta, &m[j].Deployment.ObjectMeta)
+	return CompareObjectMeta(&m[i].Deployment.DeploymentConfig.ObjectMeta, &m[j].Deployment.DeploymentConfig.ObjectMeta)
 }

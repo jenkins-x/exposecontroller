@@ -30,7 +30,7 @@ func NewAuthorizer(client RemoteAuthorizerClient) (authorizer.Authorizer, error)
 	return &RemoteAuthorizer{client}, nil
 }
 
-func (r *RemoteAuthorizer) Authorize(ctx kapi.Context, a authorizer.AuthorizationAttributes) (bool, string, error) {
+func (r *RemoteAuthorizer) Authorize(ctx kapi.Context, a authorizer.Action) (bool, string, error) {
 	var (
 		result *authzapi.SubjectAccessReviewResponse
 		err    error
@@ -42,7 +42,8 @@ func (r *RemoteAuthorizer) Authorize(ctx kapi.Context, a authorizer.Authorizatio
 	// Extract user from context
 	user := ""
 	groups := sets.NewString()
-	if userInfo, ok := kapi.UserFrom(ctx); ok {
+	userInfo, ok := kapi.UserFrom(ctx)
+	if ok {
 		user = userInfo.GetName()
 		groups.Insert(userInfo.GetGroups()...)
 	}
@@ -54,17 +55,11 @@ func (r *RemoteAuthorizer) Authorize(ctx kapi.Context, a authorizer.Authorizatio
 	}
 
 	if len(namespace) > 0 {
-		result, err = r.client.LocalSubjectAccessReviews(namespace).Create(&authzapi.LocalSubjectAccessReview{
-			User:   user,
-			Groups: groups,
-			Action: getAction(namespace, a),
-		})
+		result, err = r.client.LocalSubjectAccessReviews(namespace).Create(
+			authzapi.AddUserToLSAR(userInfo, &authzapi.LocalSubjectAccessReview{Action: getAction(namespace, a)}))
 	} else {
-		result, err = r.client.SubjectAccessReviews().Create(&authzapi.SubjectAccessReview{
-			User:   user,
-			Groups: groups,
-			Action: getAction(namespace, a),
-		})
+		result, err = r.client.SubjectAccessReviews().Create(
+			authzapi.AddUserToSAR(userInfo, &authzapi.SubjectAccessReview{Action: getAction(namespace, a)}))
 	}
 
 	if err != nil {
@@ -75,7 +70,7 @@ func (r *RemoteAuthorizer) Authorize(ctx kapi.Context, a authorizer.Authorizatio
 	return result.Allowed, result.Reason, nil
 }
 
-func (r *RemoteAuthorizer) GetAllowedSubjects(ctx kapi.Context, attributes authorizer.AuthorizationAttributes) (sets.String, sets.String, error) {
+func (r *RemoteAuthorizer) GetAllowedSubjects(ctx kapi.Context, attributes authorizer.Action) (sets.String, sets.String, error) {
 	var (
 		result *authzapi.ResourceAccessReviewResponse
 		err    error
@@ -97,8 +92,8 @@ func (r *RemoteAuthorizer) GetAllowedSubjects(ctx kapi.Context, attributes autho
 	return result.Users, result.Groups, nil
 }
 
-func getAction(namespace string, attributes authorizer.AuthorizationAttributes) authzapi.AuthorizationAttributes {
-	return authzapi.AuthorizationAttributes{
+func getAction(namespace string, attributes authorizer.Action) authzapi.Action {
+	return authzapi.Action{
 		Namespace:    namespace,
 		Verb:         attributes.GetVerb(),
 		Group:        attributes.GetAPIGroup(),
@@ -106,10 +101,10 @@ func getAction(namespace string, attributes authorizer.AuthorizationAttributes) 
 		Resource:     attributes.GetResource(),
 		ResourceName: attributes.GetResourceName(),
 
-		// TODO: missing from authorizer.AuthorizationAttributes:
+		// TODO: missing from authorizer.Action:
 		// Content
 
-		// TODO: missing from authzapi.AuthorizationAttributes
+		// TODO: missing from authzapi.Action
 		// RequestAttributes (unserializable?)
 		// IsNonResourceURL
 		// URL (doesn't make sense for remote authz?)

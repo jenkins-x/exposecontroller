@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/glog"
-
 	s2iapi "github.com/openshift/source-to-image/pkg/api"
 	"github.com/openshift/source-to-image/pkg/api/describe"
 	"github.com/openshift/source-to-image/pkg/api/validation"
@@ -71,7 +69,6 @@ type S2IBuilder struct {
 func NewS2IBuilder(dockerClient DockerClient, dockerSocket string, buildsClient client.BuildInterface, build *api.Build, gitClient GitClient, cgLimits *s2iapi.CGroupLimits) *S2IBuilder {
 	// delegate to internal implementation passing default implementation of builderFactory and validator
 	return newS2IBuilder(dockerClient, dockerSocket, buildsClient, build, gitClient, runtimeBuilderFactory{}, runtimeConfigValidator{}, cgLimits)
-
 }
 
 // newS2IBuilder is the internal factory function to create STIBuilder based on parameters. Used for testing.
@@ -93,7 +90,7 @@ func newS2IBuilder(dockerClient DockerClient, dockerSocket string, buildsClient 
 // Build executes STI build based on configured builder, S2I builder factory and S2I config validator
 func (s *S2IBuilder) Build() error {
 	if s.build.Spec.Strategy.SourceStrategy == nil {
-		return fmt.Errorf("the source to image builder must be used with the source strategy")
+		return errors.New("the source to image builder must be used with the source strategy")
 	}
 
 	var push bool
@@ -118,7 +115,7 @@ func (s *S2IBuilder) Build() error {
 	download := &downloader{
 		s:       s,
 		in:      os.Stdin,
-		timeout: urlCheckTimeout,
+		timeout: initialURLCheckTimeout,
 
 		dir:        srcDir,
 		contextDir: contextDir,
@@ -148,13 +145,13 @@ func (s *S2IBuilder) Build() error {
 		Fragment: ref,
 	}
 
-	injections := s2iapi.InjectionList{}
+	injections := s2iapi.VolumeList{}
 	for _, s := range s.build.Spec.Source.Secrets {
 		glog.V(3).Infof("Injecting secret %q into a build into %q", s.Secret.Name, filepath.Clean(s.DestinationDir))
 		secretSourcePath := filepath.Join(strategy.SecretBuildSourceBaseMountPath, s.Secret.Name)
-		injections = append(injections, s2iapi.InjectPath{
-			SourcePath:     secretSourcePath,
-			DestinationDir: s.DestinationDir,
+		injections = append(injections, s2iapi.VolumeSpec{
+			Source:      secretSourcePath,
+			Destination: s.DestinationDir,
 		})
 	}
 
@@ -164,11 +161,15 @@ func (s *S2IBuilder) Build() error {
 		return err
 	}
 	if scriptDownloadProxyConfig != nil {
-		glog.V(2).Infof("Using HTTP proxy %v and HTTPS proxy %v for script download",
+		glog.V(0).Infof("Using HTTP proxy %v and HTTPS proxy %v for script download",
 			scriptDownloadProxyConfig.HTTPProxy,
 			scriptDownloadProxyConfig.HTTPSProxy)
 	}
 
+	var incremental bool
+	if s.build.Spec.Strategy.SourceStrategy.Incremental != nil {
+		incremental = *s.build.Spec.Strategy.SourceStrategy.Incremental
+	}
 	config := &s2iapi.Config{
 		WorkingDir:     buildDir,
 		DockerConfig:   &s2iapi.DockerConfig{Endpoint: s.dockerSocket},
@@ -178,7 +179,7 @@ func (s *S2IBuilder) Build() error {
 		ScriptsURL: s.build.Spec.Strategy.SourceStrategy.Scripts,
 
 		BuilderImage:       s.build.Spec.Strategy.SourceStrategy.From.Name,
-		Incremental:        s.build.Spec.Strategy.SourceStrategy.Incremental,
+		Incremental:        incremental,
 		IncrementalFromTag: pushTag,
 
 		Environment:       buildEnvVars(s.build),
@@ -190,19 +191,22 @@ func (s *S2IBuilder) Build() error {
 		CGroupLimits:              s.cgLimits,
 		Injections:                injections,
 		ScriptDownloadProxyConfig: scriptDownloadProxyConfig,
+		BlockOnBuild:              true,
 	}
 
 	if s.build.Spec.Strategy.SourceStrategy.ForcePull {
 		glog.V(4).Infof("With force pull true, setting policies to %s", s2iapi.PullAlways)
 		config.BuilderPullPolicy = s2iapi.PullAlways
+		config.RuntimeImagePullPolicy = s2iapi.PullAlways
 	} else {
 		glog.V(4).Infof("With force pull false, setting policies to %s", s2iapi.PullIfNotPresent)
 		config.BuilderPullPolicy = s2iapi.PullIfNotPresent
+		config.RuntimeImagePullPolicy = s2iapi.PullIfNotPresent
 	}
 	config.PreviousImagePullPolicy = s2iapi.PullAlways
 
 	allowedUIDs := os.Getenv(api.AllowedUIDs)
-	glog.V(2).Infof("The value of %s is [%s]", api.AllowedUIDs, allowedUIDs)
+	glog.V(4).Infof("The value of %s is [%s]", api.AllowedUIDs, allowedUIDs)
 	if len(allowedUIDs) > 0 {
 		err := config.AllowedUIDs.Set(allowedUIDs)
 		if err != nil {
@@ -210,10 +214,21 @@ func (s *S2IBuilder) Build() error {
 		}
 	}
 	dropCaps := os.Getenv(api.DropCapabilities)
-	glog.V(2).Infof("The value of %s is [%s]", api.DropCapabilities, dropCaps)
+	glog.V(4).Infof("The value of %s is [%s]", api.DropCapabilities, dropCaps)
 	if len(dropCaps) > 0 {
 		config.DropCapabilities = strings.Split(dropCaps, ",")
 	}
+
+	if s.build.Spec.Strategy.SourceStrategy.RuntimeImage != nil {
+		runtimeImageName := s.build.Spec.Strategy.SourceStrategy.RuntimeImage.Name
+		config.RuntimeImage = runtimeImageName
+		config.RuntimeAuthentication, _ = dockercfg.NewHelper().GetDockerAuth(runtimeImageName, dockercfg.PullAuthType)
+		config.RuntimeArtifacts = copyToVolumeList(s.build.Spec.Strategy.SourceStrategy.RuntimeArtifacts)
+	}
+	// If DockerCfgPath is provided in api.Config, then attempt to read the
+	// dockercfg file and get the authentication for pulling the builder image.
+	config.PullAuthentication, _ = dockercfg.NewHelper().GetDockerAuth(config.BuilderImage, dockercfg.PullAuthType)
+	config.IncrementalAuthentication, _ = dockercfg.NewHelper().GetDockerAuth(pushTag, dockercfg.PushAuthType)
 
 	if errs := s.validator.ValidateConfig(config); len(errs) != 0 {
 		var buffer bytes.Buffer
@@ -224,12 +239,7 @@ func (s *S2IBuilder) Build() error {
 		return errors.New(buffer.String())
 	}
 
-	// If DockerCfgPath is provided in api.Config, then attempt to read the the
-	// dockercfg file and get the authentication for pulling the builder image.
-	config.PullAuthentication, _ = dockercfg.NewHelper().GetDockerAuth(config.BuilderImage, dockercfg.PullAuthType)
-	config.IncrementalAuthentication, _ = dockercfg.NewHelper().GetDockerAuth(pushTag, dockercfg.PushAuthType)
-
-	glog.V(2).Infof("Creating a new S2I builder with build config: %#v\n", describe.DescribeConfig(config))
+	glog.V(4).Infof("Creating a new S2I builder with build config: %#v\n", describe.DescribeConfig(config))
 	builder, err := s.builder.Builder(config, s2ibuild.Overrides{Downloader: download})
 	if err != nil {
 		return err
@@ -253,10 +263,9 @@ func (s *S2IBuilder) Build() error {
 	}
 
 	if err := removeImage(s.dockerClient, buildTag); err != nil {
-		glog.Warningf("Failed to remove temporary build tag %v: %v", buildTag, err)
+		glog.V(0).Infof("warning: Failed to remove temporary build tag %v: %v", buildTag, err)
 	}
 
-	defer glog.Flush()
 	if push {
 		// Get the Docker push authentication
 		pushAuthConfig, authPresent := dockercfg.NewHelper().GetDockerAuth(
@@ -264,27 +273,15 @@ func (s *S2IBuilder) Build() error {
 			dockercfg.PushAuthType,
 		)
 		if authPresent {
-			glog.Infof("Using provided push secret for pushing %s image", pushTag)
+			glog.V(3).Infof("Using provided push secret for pushing %s image", pushTag)
 		} else {
-			glog.Infof("No push secret provided")
+			glog.V(3).Infof("No push secret provided")
 		}
-		glog.Infof("Pushing %s image ...", pushTag)
+		glog.V(0).Infof("\nPushing image %s ...", pushTag)
 		if err := pushImage(s.dockerClient, pushTag, pushAuthConfig); err != nil {
-			// write extended error message to assist in problem resolution
-			msg := fmt.Sprintf("Failed to push image. Response from registry is: %v", err)
-			if authPresent {
-				glog.Infof("Registry server Address: %s", pushAuthConfig.ServerAddress)
-				glog.Infof("Registry server User Name: %s", pushAuthConfig.Username)
-				glog.Infof("Registry server Email: %s", pushAuthConfig.Email)
-				passwordPresent := "<<empty>>"
-				if len(pushAuthConfig.Password) > 0 {
-					passwordPresent = "<<non-empty>>"
-				}
-				glog.Infof("Registry server Password: %s", passwordPresent)
-			}
-			return errors.New(msg)
+			return reportPushFailure(err, authPresent, pushAuthConfig)
 		}
-		glog.Infof("Successfully pushed %s", pushTag)
+		glog.V(0).Infof("Push successful")
 	}
 	return nil
 }
@@ -343,13 +340,13 @@ func (d *downloader) Download(config *s2iapi.Config) (*s2iapi.SourceInfo, error)
 // 2. In case of repeated Keys, the last Value takes precedence right here,
 //    instead of deferring what to do with repeated environment variables to the
 //    Docker runtime.
-func buildEnvVars(build *api.Build) map[string]string {
+func buildEnvVars(build *api.Build) s2iapi.EnvironmentList {
 	bi := buildInfo(build)
-	envVars := make(map[string]string, len(bi))
+	envVars := &s2iapi.EnvironmentList{}
 	for _, item := range bi {
-		envVars[item.Key] = item.Value
+		envVars.Set(fmt.Sprintf("%s=%s", item.Key, item.Value))
 	}
-	return envVars
+	return *envVars
 }
 
 // scriptProxyConfig determines a proxy configuration for downloading
@@ -386,4 +383,16 @@ func scriptProxyConfig(build *api.Build) (*s2iapi.ProxyConfig, error) {
 		config.HTTPSProxy = proxyURL
 	}
 	return config, nil
+}
+
+// copyToVolumeList copies the artifacts set in the build config to the
+// VolumeList struct in the s2iapi.Config
+func copyToVolumeList(artifactsMapping []api.ImageSourcePath) (volumeList s2iapi.VolumeList) {
+	for _, mappedPath := range artifactsMapping {
+		volumeList = append(volumeList, s2iapi.VolumeSpec{
+			Source:      mappedPath.SourcePath,
+			Destination: mappedPath.DestinationDir,
+		})
+	}
+	return
 }

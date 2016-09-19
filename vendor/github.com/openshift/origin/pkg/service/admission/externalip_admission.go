@@ -16,21 +16,22 @@ const ExternalIPPluginName = "ExternalIPRanger"
 
 func init() {
 	kadmission.RegisterPlugin("ExternalIPRanger", func(client clientset.Interface, config io.Reader) (kadmission.Interface, error) {
-		return NewExternalIPRanger(nil, nil), nil
+		return NewExternalIPRanger(nil, nil, false), nil
 	})
 }
 
 type externalIPRanger struct {
 	*kadmission.Handler
-	reject []*net.IPNet
-	admit  []*net.IPNet
+	reject         []*net.IPNet
+	admit          []*net.IPNet
+	allowIngressIP bool
 }
 
 var _ kadmission.Interface = &externalIPRanger{}
 
-// ParseCIDRRules calculates a blacklist and whitelist from a list of string CIDR rules (treating
+// ParseRejectAdmitCIDRRules calculates a blacklist and whitelist from a list of string CIDR rules (treating
 // a leading ! as a negation). Returns an error if any rule is invalid.
-func ParseCIDRRules(rules []string) (reject, admit []*net.IPNet, err error) {
+func ParseRejectAdmitCIDRRules(rules []string) (reject, admit []*net.IPNet, err error) {
 	for _, s := range rules {
 		negate := false
 		if strings.HasPrefix(s, "!") {
@@ -51,19 +52,20 @@ func ParseCIDRRules(rules []string) (reject, admit []*net.IPNet, err error) {
 }
 
 // NewConstraint creates a new SCC constraint admission plugin.
-func NewExternalIPRanger(reject, admit []*net.IPNet) *externalIPRanger {
+func NewExternalIPRanger(reject, admit []*net.IPNet, allowIngressIP bool) *externalIPRanger {
 	return &externalIPRanger{
-		Handler: kadmission.NewHandler(kadmission.Create, kadmission.Update),
-		reject:  reject,
-		admit:   admit,
+		Handler:        kadmission.NewHandler(kadmission.Create, kadmission.Update),
+		reject:         reject,
+		admit:          admit,
+		allowIngressIP: allowIngressIP,
 	}
 }
 
-// networkSlice is a helper for checking whether an IP is contained in a range
+// NetworkSlice is a helper for checking whether an IP is contained in a range
 // of networks.
-type networkSlice []*net.IPNet
+type NetworkSlice []*net.IPNet
 
-func (s networkSlice) Contains(ip net.IP) bool {
+func (s NetworkSlice) Contains(ip net.IP) bool {
 	for _, cidr := range s {
 		if cidr.Contains(ip) {
 			return true
@@ -74,7 +76,7 @@ func (s networkSlice) Contains(ip net.IP) bool {
 
 // Admit determines if the service should be admitted based on the configured network CIDR.
 func (r *externalIPRanger) Admit(a kadmission.Attributes) error {
-	if a.GetResource() != kapi.Resource("services") {
+	if a.GetResource().GroupResource() != kapi.Resource("services") {
 		return nil
 	}
 
@@ -84,11 +86,30 @@ func (r *externalIPRanger) Admit(a kadmission.Attributes) error {
 		return nil
 	}
 
+	// Determine if an ingress ip address should be allowed as an
+	// external ip by checking the loadbalancer status of the previous
+	// object state. Only updates need to be validated against the
+	// ingress ip since the loadbalancer status cannot be set on
+	// create.
+	ingressIP := ""
+	retrieveIngressIP := a.GetOperation() == kadmission.Update &&
+		r.allowIngressIP && svc.Spec.Type == kapi.ServiceTypeLoadBalancer
+	if retrieveIngressIP {
+		old, ok := a.GetOldObject().(*kapi.Service)
+		ipPresent := ok && old != nil && len(old.Status.LoadBalancer.Ingress) > 0
+		if ipPresent {
+			ingressIP = old.Status.LoadBalancer.Ingress[0].IP
+		}
+	}
+
 	var errs field.ErrorList
 	switch {
 	// administrator disabled externalIPs
 	case len(svc.Spec.ExternalIPs) > 0 && len(r.admit) == 0:
-		errs = append(errs, field.Forbidden(field.NewPath("spec", "externalIPs"), "externalIPs have been disabled"))
+		onlyIngressIP := len(svc.Spec.ExternalIPs) == 1 && svc.Spec.ExternalIPs[0] == ingressIP
+		if !onlyIngressIP {
+			errs = append(errs, field.Forbidden(field.NewPath("spec", "externalIPs"), "externalIPs have been disabled"))
+		}
 	// administrator has limited the range
 	case len(svc.Spec.ExternalIPs) > 0 && len(r.admit) > 0:
 		for i, s := range svc.Spec.ExternalIPs {
@@ -97,14 +118,15 @@ func (r *externalIPRanger) Admit(a kadmission.Attributes) error {
 				errs = append(errs, field.Forbidden(field.NewPath("spec", "externalIPs").Index(i), "externalIPs must be a valid address"))
 				continue
 			}
-			if networkSlice(r.reject).Contains(ip) || !networkSlice(r.admit).Contains(ip) {
+			notIngressIP := s != ingressIP
+			if (NetworkSlice(r.reject).Contains(ip) || !NetworkSlice(r.admit).Contains(ip)) && notIngressIP {
 				errs = append(errs, field.Forbidden(field.NewPath("spec", "externalIPs").Index(i), "externalIP is not allowed"))
 				continue
 			}
 		}
 	}
 	if len(errs) > 0 {
-		return apierrs.NewInvalid(a.GetKind(), a.GetName(), errs)
+		return apierrs.NewInvalid(a.GetKind().GroupKind(), a.GetName(), errs)
 	}
 	return nil
 }

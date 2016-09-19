@@ -5,15 +5,19 @@ description = "The diff command description and usage"
 keywords = ["list, changed, files, container"]
 [menu.main]
 parent = "smn_cli"
-weight=1
 +++
 <![end-metadata]-->
 
 # diff
 
-    Usage: docker diff CONTAINER
+```markdown
+Usage:  docker diff CONTAINER
 
-    Inspect changes on a container's filesystem
+Inspect changes on a container's filesystem
+
+Options:
+      --help   Print usage
+```
 
 List the changed files and directories in a container᾿s filesystem
  There are 3 events that are listed in the `diff`:

@@ -34,6 +34,9 @@ KUBE_CONFIG_FILE="${KUBE_CONFIG_FILE:-"${DIR}/config-default.sh"}"
 source "${KUBE_CONFIG_FILE}"
 source "${KUBE_ROOT}/cluster/common.sh"
 
+AZKUBE_VERSION="v0.0.5"
+REGISTER_MASTER_KUBELET="true"
+
 function verify-prereqs() {
     required_binaries=("docker" "jq")
 
@@ -53,10 +56,6 @@ function verify-prereqs() {
 function azure-ensure-config() {
     if [[ -z "${AZURE_SUBSCRIPTION_ID:-}" ]]; then
         echo "AZURE_SUBSCRIPTION_ID must be set"
-        exit 1
-    fi
-    if [[ -z "${AZURE_TENANT_ID:-}" ]]; then
-        echo "AZURE_TENANT_ID must be set"
         exit 1
     fi
 
@@ -156,41 +155,59 @@ function ensure-hyperkube() {
     export AZURE_HYPERKUBE_SPEC="${user_image_tag}"
 }
 
-function azure-deploy(){
-    declare -a auth_params
-    declare -a docker_params
-    declare -a resource_group_params
+function deploy-kube-system() {
+    kubectl create -f - <<EOF
+apiVersion: v1
+kind: Namespace
+metadata:
+    name: kube-system
+EOF
+}
+
+function get-common-params() {
+    declare -a AZKUBE_AUTH_PARAMS
+    declare -a AZKUBE_DOCKER_PARAMS
+    declare -a AZKUBE_RESOURCE_GROUP_PARAM
 
     case "${AZURE_AUTH_METHOD}" in
         "client_secret")
-            auth_params=("--client-id=${AZURE_CLIENT_ID}" "--client-secret=${AZURE_CLIENT_SECRET}")
+            AZKUBE_AUTH_PARAMS+=("--client-id=${AZURE_CLIENT_ID}" "--client-secret=${AZURE_CLIENT_SECRET}")
             ;;
         "device")
-            auth_params=()
+            AZKUBE_AUTH_PARAMS=()
             ;;
     esac
 
+
     if [[ ! -z "${AZURE_HTTPS_PROXY:-}" ]]; then
-        docker_params=("--net=host" "--env=https_proxy=${AZURE_HTTPS_PROXY}")
+        docker_params+=("--net=host" "--env=https_proxy=${AZURE_HTTPS_PROXY}")
     fi
 
-    if [[ ! -z "${AZURE_RESOURCE_GROUP:-}" ]]; then
-        echo "Forcing use of resource group ${AZURE_RESOURCE_GROUP}"
-        resource_group_params=("--resource-group=${AZURE_RESOURCE_GROUP}")
+    if [[ ! -z "${AZURE_RESOURCE_GROUP_PARAM:-}" ]]; then
+        echo "Forcing use of resource group ${AZURE_RESOURCE_GROUP_PARAM}"
+        resource_group_params+=("--resource-group=${AZURE_RESOURCE_GROUP_PARAM}")
     fi
+
+    export AZKUBE_AUTH_PARAMS
+    export AZKUBE_DOCKER_PARAMS
+    export AZKUBE_RESOURCE_GROUP_PARAM
+}
+
+function azure-deploy(){
+    get-common-params
 
     docker run -it \
         --user "$(id -u)" \
-        "${docker_params[@]:+${docker_params[@]}}" \
+        "${AZKUBE_DOCKER_PARAMS[@]:+${AZKUBE_DOCKER_PARAMS[@]}}" \
+        -v "$HOME/.azkube:/.azkube" -v "/tmp:/tmp" \
         -v "${AZURE_OUTPUT_DIR}:/opt/azkube/${AZURE_OUTPUT_RELDIR}" \
-        colemickens/azkube:v0.0.1 /opt/azkube/azkube deploy \
+        "colemickens/azkube:${AZKUBE_VERSION}" /opt/azkube/azkube deploy \
             --kubernetes-hyperkube-spec="${AZURE_HYPERKUBE_SPEC}" \
             --deployment-name="${AZURE_DEPLOY_ID}" \
             --location="${AZURE_LOCATION}" \
-            "${resource_group_params[@]:+${resource_group_params[@]}}" \
-            --tenant-id="${AZURE_TENANT_ID}" \
+            "${AZKUBE_RESOURCE_GROUP_PARAM[@]:+${AZKUBE_RESOURCE_GROUP_PARAM[@]}}" \
             --subscription-id="${AZURE_SUBSCRIPTION_ID}" \
-            --auth-method="${AZURE_AUTH_METHOD}" "${auth_params[@]:+${auth_params[@]}}" \
+            --auth-method="${AZURE_AUTH_METHOD}" "${AZKUBE_AUTH_PARAMS[@]:+${AZKUBE_AUTH_PARAMS[@]}}" \
             --master-size="${AZURE_MASTER_SIZE}" \
             --node-size="${AZURE_NODE_SIZE}" \
             --node-count="${NUM_NODES}" \
@@ -230,6 +247,8 @@ function kube-up {
     kubectl config set-context "${AZURE_DEPLOY_ID}" --cluster="${AZURE_DEPLOY_ID}" --user="${AZURE_DEPLOY_ID}_user"
     kubectl config use-context "${AZURE_DEPLOY_ID}"
 
+    deploy-kube-system
+
     enddate="$(date +%s)"
     duration="$(( (startdate - enddate) ))"
 
@@ -239,10 +258,35 @@ function kube-up {
 function kube-down {
     verify-prereqs
 
-    echo "Bringing down cluster"
-    echo
-    echo "You must do this manually (for now)!"
-    echo "This can be done with:"
-    echo "   azure group delete ${AZ_RESOURCE_GROUP}"
+    # required
+    if [[ -z "${AZURE_SUBSCRIPTION_ID:-}" ]]; then
+        echo "AZURE_SUBSCRIPTION_ID must be set"
+        exit 1
+    fi
+    if [[ -z "${AZURE_DEPLOY_ID:-}" ]]; then
+        echo "AZURE_DEPLOY_ID must be set. This selects the deployment (and resource group) to delete."
+        return -1
+    fi
+
+    #optional
+    declare -a destroy_params
+    declare -a docker_params
+    if [[ ${AZURE_DOWN_SKIP_CONFIRM:-} == "true" ]]; then
+        destroy_params+=("--skip-confirm")
+    fi
+    if [[ ! -z "${AZURE_HTTPS_PROXY:-}" ]]; then
+        docker_params+=("--net=host" "--env=https_proxy=${AZURE_HTTPS_PROXY}")
+    fi
+
+    docker run -it \
+        --user "$(id -u)" \
+        -v "$HOME/.azkube:/.azkube" -v "/tmp:/tmp" \
+        "${AZKUBE_DOCKER_PARAMS[@]:+${AZKUBE_DOCKER_PARAMS[@]}}" \
+        "colemickens/azkube:${AZKUBE_VERSION}" /opt/azkube/azkube destroy \
+            --deployment-name="${AZURE_DEPLOY_ID}" \
+            --subscription-id="${AZURE_SUBSCRIPTION_ID}" \
+            --auth-method="${AZURE_AUTH_METHOD}" "${AZKUBE_AUTH_PARAMS[@]:+${AZKUBE_AUTH_PARAMS[@]}}" \
+            "${destroy_params[@]:+${destroy_params[@]}}" \
+            "${AZURE_AZKUBE_ARGS[@]:+${AZURE_AZKUBE_ARGS[@]}}"
 }
 

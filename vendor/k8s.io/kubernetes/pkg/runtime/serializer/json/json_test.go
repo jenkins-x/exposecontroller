@@ -25,23 +25,23 @@ import (
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/runtime/serializer/json"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/diff"
 )
 
 type testDecodable struct {
 	Other string
 	Value int `json:"value"`
-	gvk   *unversioned.GroupVersionKind
+	gvk   unversioned.GroupVersionKind
 }
 
-func (d *testDecodable) GetObjectKind() unversioned.ObjectKind                 { return d }
-func (d *testDecodable) SetGroupVersionKind(gvk *unversioned.GroupVersionKind) { d.gvk = gvk }
-func (d *testDecodable) GroupVersionKind() *unversioned.GroupVersionKind       { return d.gvk }
+func (d *testDecodable) GetObjectKind() unversioned.ObjectKind                { return d }
+func (d *testDecodable) SetGroupVersionKind(gvk unversioned.GroupVersionKind) { d.gvk = gvk }
+func (d *testDecodable) GroupVersionKind() unversioned.GroupVersionKind       { return d.gvk }
 
 func TestDecode(t *testing.T) {
 	testCases := []struct {
 		creater runtime.ObjectCreater
-		typer   runtime.Typer
+		typer   runtime.ObjectTyper
 		yaml    bool
 		pretty  bool
 
@@ -76,34 +76,28 @@ func TestDecode(t *testing.T) {
 			errFn:       func(err error) bool { return err.Error() == "fake error" },
 		},
 		{
-			data:       []byte("{}"),
-			defaultGVK: &unversioned.GroupVersionKind{Kind: "Test", Group: "other", Version: "blah"},
-			creater:    &mockCreater{obj: &testDecodable{}},
-			expectedObject: &testDecodable{
-				gvk: nil, // json serializer does NOT set GVK
-			},
-			expectedGVK: &unversioned.GroupVersionKind{Kind: "Test", Group: "other", Version: "blah"},
+			data:           []byte("{}"),
+			defaultGVK:     &unversioned.GroupVersionKind{Kind: "Test", Group: "other", Version: "blah"},
+			creater:        &mockCreater{obj: &testDecodable{}},
+			expectedObject: &testDecodable{},
+			expectedGVK:    &unversioned.GroupVersionKind{Kind: "Test", Group: "other", Version: "blah"},
 		},
 
 		// version without group is not defaulted
 		{
-			data:       []byte(`{"apiVersion":"blah"}`),
-			defaultGVK: &unversioned.GroupVersionKind{Kind: "Test", Group: "other", Version: "blah"},
-			creater:    &mockCreater{obj: &testDecodable{}},
-			expectedObject: &testDecodable{
-				gvk: nil, // json serializer does NOT set GVK
-			},
-			expectedGVK: &unversioned.GroupVersionKind{Kind: "Test", Group: "", Version: "blah"},
+			data:           []byte(`{"apiVersion":"blah"}`),
+			defaultGVK:     &unversioned.GroupVersionKind{Kind: "Test", Group: "other", Version: "blah"},
+			creater:        &mockCreater{obj: &testDecodable{}},
+			expectedObject: &testDecodable{},
+			expectedGVK:    &unversioned.GroupVersionKind{Kind: "Test", Group: "", Version: "blah"},
 		},
 		// group without version is defaulted
 		{
-			data:       []byte(`{"apiVersion":"other/"}`),
-			defaultGVK: &unversioned.GroupVersionKind{Kind: "Test", Group: "other", Version: "blah"},
-			creater:    &mockCreater{obj: &testDecodable{}},
-			expectedObject: &testDecodable{
-				gvk: nil, // json serializer does NOT set GVK
-			},
-			expectedGVK: &unversioned.GroupVersionKind{Kind: "Test", Group: "other", Version: "blah"},
+			data:           []byte(`{"apiVersion":"other/"}`),
+			defaultGVK:     &unversioned.GroupVersionKind{Kind: "Test", Group: "other", Version: "blah"},
+			creater:        &mockCreater{obj: &testDecodable{}},
+			expectedObject: &testDecodable{},
+			expectedGVK:    &unversioned.GroupVersionKind{Kind: "Test", Group: "other", Version: "blah"},
 		},
 
 		// accept runtime.Unknown as into and bypass creator
@@ -113,7 +107,8 @@ func TestDecode(t *testing.T) {
 
 			expectedGVK: &unversioned.GroupVersionKind{},
 			expectedObject: &runtime.Unknown{
-				RawJSON: []byte(`{}`),
+				Raw:         []byte(`{}`),
+				ContentType: runtime.ContentTypeJSON,
 			},
 		},
 		{
@@ -122,7 +117,8 @@ func TestDecode(t *testing.T) {
 
 			expectedGVK: &unversioned.GroupVersionKind{},
 			expectedObject: &runtime.Unknown{
-				RawJSON: []byte(`{"test":"object"}`),
+				Raw:         []byte(`{"test":"object"}`),
+				ContentType: runtime.ContentTypeJSON,
 			},
 		},
 		{
@@ -131,8 +127,9 @@ func TestDecode(t *testing.T) {
 			defaultGVK:  &unversioned.GroupVersionKind{Kind: "Test", Group: "other", Version: "blah"},
 			expectedGVK: &unversioned.GroupVersionKind{Kind: "Test", Group: "other", Version: "blah"},
 			expectedObject: &runtime.Unknown{
-				TypeMeta: runtime.TypeMeta{APIVersion: "other/blah", Kind: "Test"},
-				RawJSON:  []byte(`{"test":"object"}`),
+				TypeMeta:    runtime.TypeMeta{APIVersion: "other/blah", Kind: "Test"},
+				Raw:         []byte(`{"test":"object"}`),
+				ContentType: runtime.ContentTypeJSON,
 			},
 		},
 
@@ -241,7 +238,7 @@ func TestDecode(t *testing.T) {
 		}
 
 		if !reflect.DeepEqual(test.expectedObject, obj) {
-			t.Errorf("%d: unexpected object:\n%s", i, util.ObjectGoPrintSideBySide(test.expectedObject, obj))
+			t.Errorf("%d: unexpected object:\n%s", i, diff.ObjectGoPrintSideBySide(test.expectedObject, obj))
 		}
 	}
 }
@@ -263,6 +260,13 @@ type mockTyper struct {
 	err error
 }
 
-func (t *mockTyper) ObjectKind(obj runtime.Object) (*unversioned.GroupVersionKind, bool, error) {
-	return t.gvk, false, t.err
+func (t *mockTyper) ObjectKinds(obj runtime.Object) ([]unversioned.GroupVersionKind, bool, error) {
+	if t.gvk == nil {
+		return nil, false, t.err
+	}
+	return []unversioned.GroupVersionKind{*t.gvk}, false, t.err
+}
+
+func (t *mockTyper) Recognizes(_ unversioned.GroupVersionKind) bool {
+	return false
 }

@@ -1,10 +1,11 @@
 apiVersion: "v1"
 data:
-  domain: replace.me.io
-  exposer-rule: "ingress"
- # exposer-rule: "load-balancer"
- # exposer-rule: "node-port"
- # exposer-rule: "route"
+  config.yml: |-
+    domain: replace.me.io
+    exposer: NodePort
+    # exposer: LoadBalancer
+    # exposer: Ingress
+    # exposer: Route
 kind: "ConfigMap"
 metadata:
   labels:

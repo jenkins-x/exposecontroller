@@ -3,7 +3,7 @@ package controller
 import (
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	kcache "k8s.io/kubernetes/pkg/client/cache"
-	kutil "k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/flowcontrol"
 	utilwait "k8s.io/kubernetes/pkg/util/wait"
 )
 
@@ -38,17 +38,32 @@ type RetryController struct {
 
 // Queue is a narrow abstraction of a cache.FIFO.
 type Queue interface {
-	Pop() interface{}
+	Pop(kcache.PopProcessFunc) (interface{}, error)
 }
 
 // Run begins processing resources from Queue asynchronously.
 func (c *RetryController) Run() {
-	go utilwait.Forever(func() { c.handleOne(c.Queue.Pop()) }, 0)
+	go utilwait.Forever(c.pop, 0)
 }
 
 // RunUntil begins processing resources from Queue asynchronously until stopCh is closed.
 func (c *RetryController) RunUntil(stopCh <-chan struct{}) {
-	go utilwait.Until(func() { c.handleOne(c.Queue.Pop()) }, 0, stopCh)
+	go utilwait.Until(c.pop, 0, stopCh)
+}
+
+// pop removes the next item from the stack and handles it. If Handle returns
+// a retryable error, the handled resource is passed to the RetryManager. If
+// no error is returned from Handle, the RetryManager is asked to forget the
+// processed resource.
+// TODO: Pop holds the lock on the queue, which means we can't AddIfNotPresent
+//   from within Handle.  We need to fix that.
+func (c *RetryController) pop() {
+	resource, err := c.Queue.Pop(c.Handle)
+	if err != nil {
+		c.Retry(resource, err)
+		return
+	}
+	c.Forget(resource)
 }
 
 // handleOne processes resource with Handle. If Handle returns a retryable
@@ -107,7 +122,7 @@ type QueueRetryManager struct {
 
 	// limits how fast retries can be enqueued to ensure you can't tight
 	// loop on retries.
-	limiter kutil.RateLimiter
+	limiter flowcontrol.RateLimiter
 }
 
 // Retry describes provides additional information regarding retries.
@@ -126,7 +141,7 @@ type ReQueue interface {
 }
 
 // NewQueueRetryManager safely creates a new QueueRetryManager.
-func NewQueueRetryManager(queue ReQueue, keyFn kcache.KeyFunc, retryFn RetryFunc, limiter kutil.RateLimiter) *QueueRetryManager {
+func NewQueueRetryManager(queue ReQueue, keyFn kcache.KeyFunc, retryFn RetryFunc, limiter flowcontrol.RateLimiter) *QueueRetryManager {
 	return &QueueRetryManager{
 		queue:     queue,
 		keyFunc:   keyFn,

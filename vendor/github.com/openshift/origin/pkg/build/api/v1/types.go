@@ -7,89 +7,156 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api/v1"
 )
 
+// +genclient=true
+
 // Build encapsulates the inputs needed to produce a new deployable image, as well as
 // the status of the execution and a reference to the Pod which executed the build.
 type Build struct {
 	unversioned.TypeMeta `json:",inline"`
 	// Standard object's metadata.
-	kapi.ObjectMeta `json:"metadata,omitempty"`
+	kapi.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
-	// Spec is all the inputs used to execute the build.
-	Spec BuildSpec `json:"spec,omitempty"`
+	// spec is all the inputs used to execute the build.
+	Spec BuildSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
 
-	// Status is the current status of the build.
-	Status BuildStatus `json:"status,omitempty"`
+	// status is the current status of the build.
+	Status BuildStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
 }
 
-// BuildSpec encapsulates all the inputs necessary to represent a build.
+// BuildSpec has the information to represent a build and also additional
+// information about a build
 type BuildSpec struct {
-	// ServiceAccount is the name of the ServiceAccount to use to run the pod
+	// CommonSpec is the information that represents a build
+	CommonSpec `json:",inline" protobuf:"bytes,1,opt,name=commonSpec"`
+
+	// triggeredBy describes which triggers started the most recent update to the
+	// build configuration and contains information about those triggers.
+	TriggeredBy []BuildTriggerCause `json:"triggeredBy" protobuf:"bytes,2,rep,name=triggeredBy"`
+}
+
+// CommonSpec encapsulates all the inputs necessary to represent a build.
+type CommonSpec struct {
+	// serviceAccount is the name of the ServiceAccount to use to run the pod
 	// created by this build.
 	// The pod will be allowed to use secrets referenced by the ServiceAccount
-	ServiceAccount string `json:"serviceAccount,omitempty"`
+	ServiceAccount string `json:"serviceAccount,omitempty" protobuf:"bytes,1,opt,name=serviceAccount"`
 
-	// Source describes the SCM in use.
-	Source BuildSource `json:"source,omitempty"`
+	// source describes the SCM in use.
+	Source BuildSource `json:"source,omitempty" protobuf:"bytes,2,opt,name=source"`
 
-	// Revision is the information from the source for a specific repo snapshot.
+	// revision is the information from the source for a specific repo snapshot.
 	// This is optional.
-	Revision *SourceRevision `json:"revision,omitempty"`
+	Revision *SourceRevision `json:"revision,omitempty" protobuf:"bytes,3,opt,name=revision"`
 
-	// Strategy defines how to perform a build.
-	Strategy BuildStrategy `json:"strategy"`
+	// strategy defines how to perform a build.
+	Strategy BuildStrategy `json:"strategy" protobuf:"bytes,4,opt,name=strategy"`
 
-	// Output describes the Docker image the Strategy should produce.
-	Output BuildOutput `json:"output,omitempty"`
+	// output describes the Docker image the Strategy should produce.
+	Output BuildOutput `json:"output,omitempty" protobuf:"bytes,5,opt,name=output"`
 
-	// Compute resource requirements to execute the build
-	Resources kapi.ResourceRequirements `json:"resources,omitempty"`
+	// resources computes resource requirements to execute the build.
+	Resources kapi.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,6,opt,name=resources"`
 
-	// PostCommit is a build hook executed after the build output image is
+	// postCommit is a build hook executed after the build output image is
 	// committed, before it is pushed to a registry.
-	PostCommit BuildPostCommitSpec `json:"postCommit,omitempty"`
+	PostCommit BuildPostCommitSpec `json:"postCommit,omitempty" protobuf:"bytes,7,opt,name=postCommit"`
 
-	// Optional duration in seconds, counted from the time when a build pod gets
-	// scheduled in the system, that the build may be active on a node before the
-	// system actively tries to terminate the build; value must be positive integer
-	CompletionDeadlineSeconds *int64 `json:"completionDeadlineSeconds,omitempty"`
+	// completionDeadlineSeconds is an optional duration in seconds, counted from
+	// the time when a build pod gets scheduled in the system, that the build may
+	// be active on a node before the system actively tries to terminate the
+	// build; value must be positive integer
+	CompletionDeadlineSeconds *int64 `json:"completionDeadlineSeconds,omitempty" protobuf:"varint,8,opt,name=completionDeadlineSeconds"`
+}
+
+// BuildTriggerCause holds information about a triggered build. It is used for
+// displaying build trigger data for each build and build configuration in oc
+// describe. It is also used to describe which triggers led to the most recent
+// update in the build configuration.
+type BuildTriggerCause struct {
+	// message is used to store a human readable message for why the build was
+	// triggered. E.g.: "Manually triggered by user", "Configuration change",etc.
+	Message string `json:"message,omitempty" protobuf:"bytes,1,opt,name=message"`
+
+	// genericWebHook holds data about a builds generic webhook trigger.
+	GenericWebHook *GenericWebHookCause `json:"genericWebHook,omitempty" protobuf:"bytes,2,opt,name=genericWebHook"`
+
+	// gitHubWebHook represents data for a GitHub webhook that fired a
+	//specific build.
+	GitHubWebHook *GitHubWebHookCause `json:"githubWebHook,omitempty" protobuf:"bytes,3,opt,name=githubWebHook"`
+
+	// imageChangeBuild stores information about an imagechange event
+	// that triggered a new build.
+	ImageChangeBuild *ImageChangeCause `json:"imageChangeBuild,omitempty" protobuf:"bytes,4,opt,name=imageChangeBuild"`
+}
+
+// GenericWebHookCause holds information about a generic WebHook that
+// triggered a build.
+type GenericWebHookCause struct {
+	// revision is an optional field that stores the git source revision
+	// information of the generic webhook trigger when it is available.
+	Revision *SourceRevision `json:"revision,omitempty" protobuf:"bytes,1,opt,name=revision"`
+
+	// secret is the obfuscated webhook secret that triggered a build.
+	Secret string `json:"secret,omitempty" protobuf:"bytes,2,opt,name=secret"`
+}
+
+// GitHubWebHookCause has information about a GitHub webhook that triggered a
+// build.
+type GitHubWebHookCause struct {
+	// revision is the git revision information of the trigger.
+	Revision *SourceRevision `json:"revision,omitempty" protobuf:"bytes,1,opt,name=revision"`
+
+	// secret is the obfuscated webhook secret that triggered a build.
+	Secret string `json:"secret,omitempty" protobuf:"bytes,2,opt,name=secret"`
+}
+
+// ImageChangeCause contains information about the image that triggered a
+// build
+type ImageChangeCause struct {
+	// imageID is the ID of the image that triggered a a new build.
+	ImageID string `json:"imageID,omitempty" protobuf:"bytes,1,opt,name=imageID"`
+
+	// fromRef contains detailed information about an image that triggered a
+	// build.
+	FromRef *kapi.ObjectReference `json:"fromRef,omitempty" protobuf:"bytes,2,opt,name=fromRef"`
 }
 
 // BuildStatus contains the status of a build
 type BuildStatus struct {
-	// Phase is the point in the build lifecycle.
-	Phase BuildPhase `json:"phase"`
+	// phase is the point in the build lifecycle.
+	Phase BuildPhase `json:"phase" protobuf:"bytes,1,opt,name=phase,casttype=BuildPhase"`
 
-	// Cancelled describes if a cancel event was triggered for the build.
-	Cancelled bool `json:"cancelled,omitempty"`
+	// cancelled describes if a cancel event was triggered for the build.
+	Cancelled bool `json:"cancelled,omitempty" protobuf:"varint,2,opt,name=cancelled"`
 
-	// Reason is a brief CamelCase string that describes any failure and is meant for machine parsing and tidy display in the CLI.
-	Reason StatusReason `json:"reason,omitempty"`
+	// reason is a brief CamelCase string that describes any failure and is meant for machine parsing and tidy display in the CLI.
+	Reason StatusReason `json:"reason,omitempty" protobuf:"bytes,3,opt,name=reason,casttype=StatusReason"`
 
-	// Message is a human-readable message indicating details about why the build has this status.
-	Message string `json:"message,omitempty"`
+	// message is a human-readable message indicating details about why the build has this status.
+	Message string `json:"message,omitempty" protobuf:"bytes,4,opt,name=message"`
 
-	// StartTimestamp is a timestamp representing the server time when this Build started
+	// startTimestamp is a timestamp representing the server time when this Build started
 	// running in a Pod.
 	// It is represented in RFC3339 form and is in UTC.
-	StartTimestamp *unversioned.Time `json:"startTimestamp,omitempty"`
+	StartTimestamp *unversioned.Time `json:"startTimestamp,omitempty" protobuf:"bytes,5,opt,name=startTimestamp"`
 
-	// CompletionTimestamp is a timestamp representing the server time when this Build was
+	// completionTimestamp is a timestamp representing the server time when this Build was
 	// finished, whether that build failed or succeeded.  It reflects the time at which
 	// the Pod running the Build terminated.
 	// It is represented in RFC3339 form and is in UTC.
-	CompletionTimestamp *unversioned.Time `json:"completionTimestamp,omitempty"`
+	CompletionTimestamp *unversioned.Time `json:"completionTimestamp,omitempty" protobuf:"bytes,6,opt,name=completionTimestamp"`
 
-	// Duration contains time.Duration object describing build time.
-	Duration time.Duration `json:"duration,omitempty"`
+	// duration contains time.Duration object describing build time.
+	Duration time.Duration `json:"duration,omitempty" protobuf:"varint,7,opt,name=duration,casttype=time.Duration"`
 
-	// OutputDockerImageReference contains a reference to the Docker image that
+	// outputDockerImageReference contains a reference to the Docker image that
 	// will be built by this build. Its value is computed from
 	// Build.Spec.Output.To, and should include the registry address, so that
 	// it can be used to push and pull the image.
-	OutputDockerImageReference string `json:"outputDockerImageReference,omitempty"`
+	OutputDockerImageReference string `json:"outputDockerImageReference,omitempty" protobuf:"bytes,8,opt,name=outputDockerImageReference"`
 
-	// Config is an ObjectReference to the BuildConfig this Build is based on.
-	Config *kapi.ObjectReference `json:"config,omitempty"`
+	// config is an ObjectReference to the BuildConfig this Build is based on.
+	Config *kapi.ObjectReference `json:"config,omitempty" protobuf:"bytes,9,opt,name=config"`
 }
 
 // BuildPhase represents the status of a build at a point in time.
@@ -138,87 +205,90 @@ const (
 	BuildSourceBinary BuildSourceType = "Binary"
 	// BuildSourceImage indicates the build will accept an image as input
 	BuildSourceImage BuildSourceType = "Image"
+	// BuildSourceNone indicates the build has no predefined input (only valid for Source and Custom Strategies)
+	BuildSourceNone BuildSourceType = "None"
 )
 
 // BuildSource is the SCM used for the build.
 type BuildSource struct {
-	// Type of build input to accept
-	Type BuildSourceType `json:"type"`
+	// type of build input to accept
+	// +genconversion=false
+	Type BuildSourceType `json:"type" protobuf:"bytes,1,opt,name=type,casttype=BuildSourceType"`
 
-	// Binary builds accept a binary as their input. The binary is generally assumed to be a tar,
+	// binary builds accept a binary as their input. The binary is generally assumed to be a tar,
 	// gzipped tar, or zip file depending on the strategy. For Docker builds, this is the build
 	// context and an optional Dockerfile may be specified to override any Dockerfile in the
 	// build context. For Source builds, this is assumed to be an archive as described above. For
 	// Source and Docker builds, if binary.asFile is set the build will receive a directory with
 	// a single file. contextDir may be used when an archive is provided. Custom builds will
 	// receive this binary as input on STDIN.
-	Binary *BinaryBuildSource `json:"binary,omitempty"`
+	Binary *BinaryBuildSource `json:"binary,omitempty" protobuf:"bytes,2,opt,name=binary"`
 
-	// Dockerfile is the raw contents of a Dockerfile which should be built. When this option is
+	// dockerfile is the raw contents of a Dockerfile which should be built. When this option is
 	// specified, the FROM may be modified based on your strategy base image and additional ENV
 	// stanzas from your strategy environment will be added after the FROM, but before the rest
 	// of your Dockerfile stanzas. The Dockerfile source type may be used with other options like
 	// git - in those cases the Git repo will have any innate Dockerfile replaced in the context
 	// dir.
-	Dockerfile *string `json:"dockerfile,omitempty"`
+	Dockerfile *string `json:"dockerfile,omitempty" protobuf:"bytes,3,opt,name=dockerfile"`
 
-	// Git contains optional information about git build source
-	Git *GitBuildSource `json:"git,omitempty"`
+	// git contains optional information about git build source
+	Git *GitBuildSource `json:"git,omitempty" protobuf:"bytes,4,opt,name=git"`
 
-	// Images describes a set of images to be used to provide source for the build
-	Images []ImageSource `json:"images,omitempty"`
+	// images describes a set of images to be used to provide source for the build
+	Images []ImageSource `json:"images,omitempty" protobuf:"bytes,5,rep,name=images"`
 
-	// ContextDir specifies the sub-directory where the source code for the application exists.
+	// contextDir specifies the sub-directory where the source code for the application exists.
 	// This allows to have buildable sources in directory other than root of
 	// repository.
-	ContextDir string `json:"contextDir,omitempty"`
+	ContextDir string `json:"contextDir,omitempty" protobuf:"bytes,6,opt,name=contextDir"`
 
-	// SourceSecret is the name of a Secret that would be used for setting
+	// sourceSecret is the name of a Secret that would be used for setting
 	// up the authentication for cloning private repository.
 	// The secret contains valid credentials for remote repository, where the
 	// data's key represent the authentication method to be used and value is
 	// the base64 encoded credentials. Supported auth methods are: ssh-privatekey.
-	SourceSecret *kapi.LocalObjectReference `json:"sourceSecret,omitempty"`
+	SourceSecret *kapi.LocalObjectReference `json:"sourceSecret,omitempty" protobuf:"bytes,7,opt,name=sourceSecret"`
 
-	// Secrets represents a list of secrets and their destinations that will
+	// secrets represents a list of secrets and their destinations that will
 	// be used only for the build.
-	Secrets []SecretBuildSource `json:"secrets"`
+	Secrets []SecretBuildSource `json:"secrets,omitempty" protobuf:"bytes,8,rep,name=secrets"`
 }
 
 // ImageSource describes an image that is used as source for the build
 type ImageSource struct {
-	// From is a reference to an ImageStreamTag, ImageStreamImage, or DockerImage to
+	// from is a reference to an ImageStreamTag, ImageStreamImage, or DockerImage to
 	// copy source from.
-	From kapi.ObjectReference `json:"from"`
+	From kapi.ObjectReference `json:"from" protobuf:"bytes,1,opt,name=from"`
 
-	// Paths is a list of source and destination paths to copy from the image.
-	Paths []ImageSourcePath `json:"paths"`
+	// paths is a list of source and destination paths to copy from the image.
+	Paths []ImageSourcePath `json:"paths" protobuf:"bytes,2,rep,name=paths"`
 
-	// PullSecret is a reference to a secret to be used to pull the image from a registry
+	// pullSecret is a reference to a secret to be used to pull the image from a registry
 	// If the image is pulled from the OpenShift registry, this field does not need to be set.
-	PullSecret *kapi.LocalObjectReference `json:"pullSecret,omitempty"`
+	PullSecret *kapi.LocalObjectReference `json:"pullSecret,omitempty" protobuf:"bytes,3,opt,name=pullSecret"`
 }
 
 // ImageSourcePath describes a path to be copied from a source image and its destination within the build directory.
 type ImageSourcePath struct {
-	// SourcePath is the absolute path of the file or directory inside the image to
+	// sourcePath is the absolute path of the file or directory inside the image to
 	// copy to the build directory.
-	SourcePath string `json:"sourcePath"`
+	SourcePath string `json:"sourcePath" protobuf:"bytes,1,opt,name=sourcePath"`
 
-	// DestinationDir is the relative directory within the build directory
+	// destinationDir is the relative directory within the build directory
 	// where files copied from the image are placed.
-	DestinationDir string `json:"destinationDir"`
+	DestinationDir string `json:"destinationDir" protobuf:"bytes,2,opt,name=destinationDir"`
 }
 
 // SecretBuildSource describes a secret and its destination directory that will be
 // used only at the build time. The content of the secret referenced here will
 // be copied into the destination directory instead of mounting.
 type SecretBuildSource struct {
-	// Secret is a reference to an existing secret that you want to use in your
+	// secret is a reference to an existing secret that you want to use in your
 	// build.
-	Secret kapi.LocalObjectReference `json:"secret"`
+	Secret kapi.LocalObjectReference `json:"secret" protobuf:"bytes,1,opt,name=secret"`
 
-	// DestinationDir is the directory where the files from the secret should be
+	// destinationDir is the directory where the files from the secret should be
 	// available for the build time.
 	// For the Source build strategy, these will be injected into a container
 	// where the assemble script runs. Later, when the script finishes, all files
@@ -226,83 +296,89 @@ type SecretBuildSource struct {
 	// For the Docker build strategy, these will be copied into the build
 	// directory, where the Dockerfile is located, so users can ADD or COPY them
 	// during docker build.
-	DestinationDir string `json:"destinationDir,omitempty"`
+	DestinationDir string `json:"destinationDir,omitempty" protobuf:"bytes,2,opt,name=destinationDir"`
 }
 
 // BinaryBuildSource describes a binary file to be used for the Docker and Source build strategies,
 // where the file will be extracted and used as the build source.
 type BinaryBuildSource struct {
-	// AsFile indicates that the provided binary input should be considered a single file
+	// asFile indicates that the provided binary input should be considered a single file
 	// within the build input. For example, specifying "webapp.war" would place the provided
 	// binary as `/webapp.war` for the builder. If left empty, the Docker and Source build
 	// strategies assume this file is a zip, tar, or tar.gz file and extract it as the source.
 	// The custom strategy receives this binary as standard input. This filename may not
 	// contain slashes or be '..' or '.'.
-	AsFile string `json:"asFile,omitempty"`
+	AsFile string `json:"asFile,omitempty" protobuf:"bytes,1,opt,name=asFile"`
 }
 
 // SourceRevision is the revision or commit information from the source for the build
 type SourceRevision struct {
-	// Type of the build source
-	Type BuildSourceType `json:"type"`
+	// type of the build source, may be one of 'Source', 'Dockerfile', 'Binary', or 'Images'
+	// +genconversion=false
+	Type BuildSourceType `json:"type" protobuf:"bytes,1,opt,name=type,casttype=BuildSourceType"`
 
 	// Git contains information about git-based build source
-	Git *GitSourceRevision `json:"git,omitempty"`
+	Git *GitSourceRevision `json:"git,omitempty" protobuf:"bytes,2,opt,name=git"`
 }
 
 // GitSourceRevision is the commit information from a git source for a build
 type GitSourceRevision struct {
-	// Commit is the commit hash identifying a specific commit
-	Commit string `json:"commit,omitempty"`
+	// commit is the commit hash identifying a specific commit
+	Commit string `json:"commit,omitempty" protobuf:"bytes,1,opt,name=commit"`
 
-	// Author is the author of a specific commit
-	Author SourceControlUser `json:"author,omitempty"`
+	// author is the author of a specific commit
+	Author SourceControlUser `json:"author,omitempty" protobuf:"bytes,2,opt,name=author"`
 
-	// Committer is the committer of a specific commit
-	Committer SourceControlUser `json:"committer,omitempty"`
+	// committer is the committer of a specific commit
+	Committer SourceControlUser `json:"committer,omitempty" protobuf:"bytes,3,opt,name=committer"`
 
-	// Message is the description of a specific commit
-	Message string `json:"message,omitempty"`
+	// message is the description of a specific commit
+	Message string `json:"message,omitempty" protobuf:"bytes,4,opt,name=message"`
 }
 
 // GitBuildSource defines the parameters of a Git SCM
 type GitBuildSource struct {
-	// URI points to the source that will be built. The structure of the source
+	// uri points to the source that will be built. The structure of the source
 	// will depend on the type of build to run
-	URI string `json:"uri"`
+	URI string `json:"uri" protobuf:"bytes,1,opt,name=uri"`
 
-	// Ref is the branch/tag/ref to build.
-	Ref string `json:"ref,omitempty"`
+	// ref is the branch/tag/ref to build.
+	Ref string `json:"ref,omitempty" protobuf:"bytes,2,opt,name=ref"`
 
-	// HTTPProxy is a proxy used to reach the git repository over http
-	HTTPProxy *string `json:"httpProxy,omitempty"`
+	// httpProxy is a proxy used to reach the git repository over http
+	HTTPProxy *string `json:"httpProxy,omitempty" protobuf:"bytes,3,opt,name=httpProxy"`
 
-	// HTTPSProxy is a proxy used to reach the git repository over https
-	HTTPSProxy *string `json:"httpsProxy,omitempty"`
+	// httpsProxy is a proxy used to reach the git repository over https
+	HTTPSProxy *string `json:"httpsProxy,omitempty" protobuf:"bytes,4,opt,name=httpsProxy"`
 }
 
 // SourceControlUser defines the identity of a user of source control
 type SourceControlUser struct {
-	// Name of the source control user
-	Name string `json:"name,omitempty"`
+	// name of the source control user
+	Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
 
-	// Email of the source control user
-	Email string `json:"email,omitempty"`
+	// email of the source control user
+	Email string `json:"email,omitempty" protobuf:"bytes,2,opt,name=email"`
 }
 
 // BuildStrategy contains the details of how to perform a build.
 type BuildStrategy struct {
-	// Type is the kind of build strategy.
-	Type BuildStrategyType `json:"type"`
+	// type is the kind of build strategy.
+	// +genconversion=false
+	Type BuildStrategyType `json:"type" protobuf:"bytes,1,opt,name=type,casttype=BuildStrategyType"`
 
-	// DockerStrategy holds the parameters to the Docker build strategy.
-	DockerStrategy *DockerBuildStrategy `json:"dockerStrategy,omitempty"`
+	// dockerStrategy holds the parameters to the Docker build strategy.
+	DockerStrategy *DockerBuildStrategy `json:"dockerStrategy,omitempty" protobuf:"bytes,2,opt,name=dockerStrategy"`
 
-	// SourceStrategy holds the parameters to the Source build strategy.
-	SourceStrategy *SourceBuildStrategy `json:"sourceStrategy,omitempty"`
+	// sourceStrategy holds the parameters to the Source build strategy.
+	SourceStrategy *SourceBuildStrategy `json:"sourceStrategy,omitempty" protobuf:"bytes,3,opt,name=sourceStrategy"`
 
-	// CustomStrategy holds the parameters to the Custom build strategy
-	CustomStrategy *CustomBuildStrategy `json:"customStrategy,omitempty"`
+	// customStrategy holds the parameters to the Custom build strategy
+	CustomStrategy *CustomBuildStrategy `json:"customStrategy,omitempty" protobuf:"bytes,4,opt,name=customStrategy"`
+
+	// JenkinsPipelineStrategy holds the parameters to the Jenkins Pipeline build strategy.
+	// This strategy is in tech preview.
+	JenkinsPipelineStrategy *JenkinsPipelineBuildStrategy `json:"jenkinsPipelineStrategy,omitempty" protobuf:"bytes,5,opt,name=jenkinsPipelineStrategy"`
 }
 
 // BuildStrategyType describes a particular way of performing a build.
@@ -319,87 +395,116 @@ const (
 
 	// CustomBuildStrategyType performs builds using custom builder Docker image.
 	CustomBuildStrategyType BuildStrategyType = "Custom"
+
+	// JenkinsPipelineBuildStrategyType indicates the build will run via Jenkine Pipeline.
+	JenkinsPipelineBuildStrategyType BuildStrategyType = "JenkinsPipeline"
 )
 
 // CustomBuildStrategy defines input parameters specific to Custom build.
 type CustomBuildStrategy struct {
-	// From is reference to an DockerImage, ImageStreamTag, or ImageStreamImage from which
+	// from is reference to an DockerImage, ImageStreamTag, or ImageStreamImage from which
 	// the docker image should be pulled
-	From kapi.ObjectReference `json:"from"`
+	From kapi.ObjectReference `json:"from" protobuf:"bytes,1,opt,name=from"`
 
-	// PullSecret is the name of a Secret that would be used for setting up
+	// pullSecret is the name of a Secret that would be used for setting up
 	// the authentication for pulling the Docker images from the private Docker
 	// registries
-	PullSecret *kapi.LocalObjectReference `json:"pullSecret,omitempty"`
+	PullSecret *kapi.LocalObjectReference `json:"pullSecret,omitempty" protobuf:"bytes,2,opt,name=pullSecret"`
 
-	// Env contains additional environment variables you want to pass into a builder container
-	Env []kapi.EnvVar `json:"env,omitempty"`
+	// env contains additional environment variables you want to pass into a builder container
+	Env []kapi.EnvVar `json:"env,omitempty" protobuf:"bytes,3,rep,name=env"`
 
-	// ExposeDockerSocket will allow running Docker commands (and build Docker images) from
+	// exposeDockerSocket will allow running Docker commands (and build Docker images) from
 	// inside the Docker container.
 	// TODO: Allow admins to enforce 'false' for this option
-	ExposeDockerSocket bool `json:"exposeDockerSocket,omitempty"`
+	ExposeDockerSocket bool `json:"exposeDockerSocket,omitempty" protobuf:"varint,4,opt,name=exposeDockerSocket"`
 
-	// ForcePull describes if the controller should configure the build pod to always pull the images
+	// forcePull describes if the controller should configure the build pod to always pull the images
 	// for the builder or only pull if it is not present locally
-	ForcePull bool `json:"forcePull,omitempty"`
+	ForcePull bool `json:"forcePull,omitempty" protobuf:"varint,5,opt,name=forcePull"`
 
-	// Secrets is a list of additional secrets that will be included in the build pod
-	Secrets []SecretSpec `json:"secrets,omitempty"`
+	// secrets is a list of additional secrets that will be included in the build pod
+	Secrets []SecretSpec `json:"secrets,omitempty" protobuf:"bytes,6,rep,name=secrets"`
 
-	// BuildAPIVersion is the requested API version for the Build object serialized and passed to the custom builder
-	BuildAPIVersion string `json:"buildAPIVersion,omitempty"`
+	// buildAPIVersion is the requested API version for the Build object serialized and passed to the custom builder
+	BuildAPIVersion string `json:"buildAPIVersion,omitempty" protobuf:"bytes,7,opt,name=buildAPIVersion"`
 }
 
 // DockerBuildStrategy defines input parameters specific to Docker build.
 type DockerBuildStrategy struct {
-	// From is reference to an DockerImage, ImageStreamTag, or ImageStreamImage from which
+	// from is reference to an DockerImage, ImageStreamTag, or ImageStreamImage from which
 	// the docker image should be pulled
 	// the resulting image will be used in the FROM line of the Dockerfile for this build.
-	From *kapi.ObjectReference `json:"from,omitempty"`
+	From *kapi.ObjectReference `json:"from,omitempty" protobuf:"bytes,1,opt,name=from"`
 
-	// PullSecret is the name of a Secret that would be used for setting up
+	// pullSecret is the name of a Secret that would be used for setting up
 	// the authentication for pulling the Docker images from the private Docker
 	// registries
-	PullSecret *kapi.LocalObjectReference `json:"pullSecret,omitempty"`
+	PullSecret *kapi.LocalObjectReference `json:"pullSecret,omitempty" protobuf:"bytes,2,opt,name=pullSecret"`
 
-	// NoCache if set to true indicates that the docker build must be executed with the
+	// noCache if set to true indicates that the docker build must be executed with the
 	// --no-cache=true flag
-	NoCache bool `json:"noCache,omitempty"`
+	NoCache bool `json:"noCache,omitempty" protobuf:"varint,3,opt,name=noCache"`
 
-	// Env contains additional environment variables you want to pass into a builder container
-	Env []kapi.EnvVar `json:"env,omitempty"`
+	// env contains additional environment variables you want to pass into a builder container
+	Env []kapi.EnvVar `json:"env,omitempty" protobuf:"bytes,4,rep,name=env"`
 
-	// ForcePull describes if the builder should pull the images from registry prior to building.
-	ForcePull bool `json:"forcePull,omitempty"`
+	// forcePull describes if the builder should pull the images from registry prior to building.
+	ForcePull bool `json:"forcePull,omitempty" protobuf:"varint,5,opt,name=forcePull"`
 
-	// DockerfilePath is the path of the Dockerfile that will be used to build the Docker image,
+	// dockerfilePath is the path of the Dockerfile that will be used to build the Docker image,
 	// relative to the root of the context (contextDir).
-	DockerfilePath string `json:"dockerfilePath,omitempty"`
+	DockerfilePath string `json:"dockerfilePath,omitempty" protobuf:"bytes,6,opt,name=dockerfilePath"`
 }
 
 // SourceBuildStrategy defines input parameters specific to an Source build.
 type SourceBuildStrategy struct {
-	// From is reference to an DockerImage, ImageStreamTag, or ImageStreamImage from which
+	// from is reference to an DockerImage, ImageStreamTag, or ImageStreamImage from which
 	// the docker image should be pulled
-	From kapi.ObjectReference `json:"from"`
+	From kapi.ObjectReference `json:"from" protobuf:"bytes,1,opt,name=from"`
 
-	// PullSecret is the name of a Secret that would be used for setting up
+	// pullSecret is the name of a Secret that would be used for setting up
 	// the authentication for pulling the Docker images from the private Docker
 	// registries
-	PullSecret *kapi.LocalObjectReference `json:"pullSecret,omitempty"`
+	PullSecret *kapi.LocalObjectReference `json:"pullSecret,omitempty" protobuf:"bytes,2,opt,name=pullSecret"`
 
-	// Env contains additional environment variables you want to pass into a builder container
-	Env []kapi.EnvVar `json:"env,omitempty"`
+	// env contains additional environment variables you want to pass into a builder container
+	Env []kapi.EnvVar `json:"env,omitempty" protobuf:"bytes,3,rep,name=env"`
 
-	// Scripts is the location of Source scripts
-	Scripts string `json:"scripts,omitempty"`
+	// scripts is the location of Source scripts
+	Scripts string `json:"scripts,omitempty" protobuf:"bytes,4,opt,name=scripts"`
 
-	// Incremental flag forces the Source build to do incremental builds if true.
-	Incremental bool `json:"incremental,omitempty"`
+	// incremental flag forces the Source build to do incremental builds if true.
+	Incremental *bool `json:"incremental,omitempty" protobuf:"varint,5,opt,name=incremental"`
 
-	// ForcePull describes if the builder should pull the images from registry prior to building.
-	ForcePull bool `json:"forcePull,omitempty"`
+	// forcePull describes if the builder should pull the images from registry prior to building.
+	ForcePull bool `json:"forcePull,omitempty" protobuf:"varint,6,opt,name=forcePull"`
+
+	// runtimeImage is an optional image that is used to run an application
+	// without unneeded dependencies installed. The building of the application
+	// is still done in the builder image but, post build, you can copy the
+	// needed artifacts in the runtime image for use.
+	// This field and the feature it enables are in tech preview.
+	RuntimeImage *kapi.ObjectReference `json:"runtimeImage,omitempty" protobuf:"bytes,7,opt,name=runtimeImage"`
+
+	// runtimeArtifacts specifies a list of source/destination pairs that will be
+	// copied from the builder to the runtime image. sourcePath can be a file or
+	// directory. destinationDir must be a directory. destinationDir can also be
+	// empty or equal to ".", in this case it just refers to the root of WORKDIR.
+	// This field and the feature it enables are in tech preview.
+	RuntimeArtifacts []ImageSourcePath `json:"runtimeArtifacts,omitempty" protobuf:"bytes,8,rep,name=runtimeArtifacts"`
+}
+
+// JenkinsPipelineBuildStrategy holds parameters specific to a Jenkins Pipeline build.
+// This strategy is in tech preview.
+type JenkinsPipelineBuildStrategy struct {
+	// JenkinsfilePath is the optional path of the Jenkinsfile that will be used to configure the pipeline
+	// relative to the root of the context (contextDir). If both JenkinsfilePath & Jenkinsfile are
+	// both not specified, this defaults to Jenkinsfile in the root of the specified contextDir.
+	JenkinsfilePath string `json:"jenkinsfilePath,omitempty" protobuf:"bytes,1,opt,name=jenkinsfilePath"`
+
+	// Jenkinsfile defines the optional raw contents of a Jenkinsfile which defines a Jenkins pipeline build.
+	Jenkinsfile string `json:"jenkinsfile,omitempty" protobuf:"bytes,2,opt,name=jenkinsfile"`
 }
 
 // A BuildPostCommitSpec holds a build post commit hook specification. The hook
@@ -468,16 +573,16 @@ type SourceBuildStrategy struct {
 // It is invalid to provide both Script and Command simultaneously. If none of
 // the fields are specified, the hook is not executed.
 type BuildPostCommitSpec struct {
-	// Command is the command to run. It may not be specified with Script.
+	// command is the command to run. It may not be specified with Script.
 	// This might be needed if the image doesn't have `/bin/sh`, or if you
 	// do not want to use a shell. In all other cases, using Script might be
 	// more convenient.
-	Command []string `json:"command,omitempty"`
-	// Args is a list of arguments that are provided to either Command,
+	Command []string `json:"command,omitempty" protobuf:"bytes,1,rep,name=command"`
+	// args is a list of arguments that are provided to either Command,
 	// Script or the Docker image's default entrypoint. The arguments are
 	// placed immediately after the command to be run.
-	Args []string `json:"args,omitempty"`
-	// Script is a shell script to be run with `/bin/sh -ic`. It may not be
+	Args []string `json:"args,omitempty" protobuf:"bytes,2,rep,name=args"`
+	// script is a shell script to be run with `/bin/sh -ic`. It may not be
 	// specified with Command. Use Script when a shell script is appropriate
 	// to execute the post build hook, for example for running unit tests
 	// with `rake test`. If you need control over the image entrypoint, or
@@ -487,86 +592,116 @@ type BuildPostCommitSpec struct {
 	// collections enabled in the shell. E.g., in the Ruby image, this is
 	// necessary to make `ruby`, `bundle` and other binaries available in
 	// the PATH.
-	Script string `json:"script,omitempty"`
+	Script string `json:"script,omitempty" protobuf:"bytes,3,opt,name=script"`
 }
 
 // BuildOutput is input to a build strategy and describes the Docker image that the strategy
 // should produce.
 type BuildOutput struct {
-	// To defines an optional location to push the output of this build to.
+	// to defines an optional location to push the output of this build to.
 	// Kind must be one of 'ImageStreamTag' or 'DockerImage'.
 	// This value will be used to look up a Docker image repository to push to.
 	// In the case of an ImageStreamTag, the ImageStreamTag will be looked for in the namespace of
 	// the build unless Namespace is specified.
-	To *kapi.ObjectReference `json:"to,omitempty"`
+	To *kapi.ObjectReference `json:"to,omitempty" protobuf:"bytes,1,opt,name=to"`
 
 	// PushSecret is the name of a Secret that would be used for setting
 	// up the authentication for executing the Docker push to authentication
 	// enabled Docker Registry (or Docker Hub).
-	PushSecret *kapi.LocalObjectReference `json:"pushSecret,omitempty"`
+	PushSecret *kapi.LocalObjectReference `json:"pushSecret,omitempty" protobuf:"bytes,2,opt,name=pushSecret"`
 }
 
 // BuildConfig is a template which can be used to create new builds.
 type BuildConfig struct {
 	unversioned.TypeMeta `json:",inline"`
-	// Standard object's metadata.
-	kapi.ObjectMeta `json:"metadata,omitempty"`
+	// metadata for BuildConfig.
+	kapi.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
-	// Spec holds all the input necessary to produce a new build, and the conditions when
+	// spec holds all the input necessary to produce a new build, and the conditions when
 	// to trigger them.
-	Spec BuildConfigSpec `json:"spec"`
-	// Status holds any relevant information about a build config
-	Status BuildConfigStatus `json:"status"`
+	Spec BuildConfigSpec `json:"spec" protobuf:"bytes,2,opt,name=spec"`
+	// status holds any relevant information about a build config
+	Status BuildConfigStatus `json:"status" protobuf:"bytes,3,opt,name=status"`
 }
 
 // BuildConfigSpec describes when and how builds are created
 type BuildConfigSpec struct {
-	// Triggers determine how new Builds can be launched from a BuildConfig. If no triggers
-	// are defined, a new build can only occur as a result of an explicit client build creation.
-	Triggers []BuildTriggerPolicy `json:"triggers"`
 
-	// BuildSpec is the desired build specification
-	BuildSpec `json:",inline"`
+	//triggers determine how new Builds can be launched from a BuildConfig. If
+	//no triggers are defined, a new build can only occur as a result of an
+	//explicit client build creation.
+	Triggers []BuildTriggerPolicy `json:"triggers" protobuf:"bytes,1,rep,name=triggers"`
+
+	// RunPolicy describes how the new build created from this build
+	// configuration will be scheduled for execution.
+	// This is optional, if not specified we default to "Serial".
+	RunPolicy BuildRunPolicy `json:"runPolicy,omitempty" protobuf:"bytes,2,opt,name=runPolicy,casttype=BuildRunPolicy"`
+
+	// CommonSpec is the desired build specification
+	CommonSpec `json:",inline" protobuf:"bytes,3,opt,name=commonSpec"`
 }
+
+// BuildRunPolicy defines the behaviour of how the new builds are executed
+// from the existing build configuration.
+type BuildRunPolicy string
+
+const (
+	// BuildRunPolicyParallel schedules new builds immediately after they are
+	// created. Builds will be executed in parallel.
+	BuildRunPolicyParallel BuildRunPolicy = "Parallel"
+
+	// BuildRunPolicySerial schedules new builds to execute in a sequence as
+	// they are created. Every build gets queued up and will execute when the
+	// previous build completes. This is the default policy.
+	BuildRunPolicySerial BuildRunPolicy = "Serial"
+
+	// BuildRunPolicySerialLatestOnly schedules only the latest build to execute,
+	// cancelling all the previously queued build.
+	BuildRunPolicySerialLatestOnly BuildRunPolicy = "SerialLatestOnly"
+)
 
 // BuildConfigStatus contains current state of the build config object.
 type BuildConfigStatus struct {
-	// LastVersion is used to inform about number of last triggered build.
-	LastVersion int `json:"lastVersion"`
+	// lastVersion is used to inform about number of last triggered build.
+	LastVersion int64 `json:"lastVersion" protobuf:"varint,1,opt,name=lastVersion"`
 }
 
 // WebHookTrigger is a trigger that gets invoked using a webhook type of post
 type WebHookTrigger struct {
-	// Secret used to validate requests.
-	Secret string `json:"secret,omitempty"`
+	// secret used to validate requests.
+	Secret string `json:"secret,omitempty" protobuf:"bytes,1,opt,name=secret"`
+
+	// allowEnv determines whether the webhook can set environment variables; can only
+	// be set to true for GenericWebHook.
+	AllowEnv bool `json:"allowEnv,omitempty" protobuf:"varint,2,opt,name=allowEnv"`
 }
 
 // ImageChangeTrigger allows builds to be triggered when an ImageStream changes
 type ImageChangeTrigger struct {
-	// LastTriggeredImageID is used internally by the ImageChangeController to save last
+	// lastTriggeredImageID is used internally by the ImageChangeController to save last
 	// used image ID for build
-	LastTriggeredImageID string `json:"lastTriggeredImageID,omitempty"`
+	LastTriggeredImageID string `json:"lastTriggeredImageID,omitempty" protobuf:"bytes,1,opt,name=lastTriggeredImageID"`
 
-	// From is a reference to an ImageStreamTag that will trigger a build when updated
+	// from is a reference to an ImageStreamTag that will trigger a build when updated
 	// It is optional. If no From is specified, the From image from the build strategy
 	// will be used. Only one ImageChangeTrigger with an empty From reference is allowed in
 	// a build configuration.
-	From *kapi.ObjectReference `json:"from,omitempty"`
+	From *kapi.ObjectReference `json:"from,omitempty" protobuf:"bytes,2,opt,name=from"`
 }
 
 // BuildTriggerPolicy describes a policy for a single trigger that results in a new Build.
 type BuildTriggerPolicy struct {
-	// Type is the type of build trigger
-	Type BuildTriggerType `json:"type"`
+	// type is the type of build trigger
+	Type BuildTriggerType `json:"type" protobuf:"bytes,1,opt,name=type,casttype=BuildTriggerType"`
 
-	// GitHubWebHook contains the parameters for a GitHub webhook type of trigger
-	GitHubWebHook *WebHookTrigger `json:"github,omitempty"`
+	// github contains the parameters for a GitHub webhook type of trigger
+	GitHubWebHook *WebHookTrigger `json:"github,omitempty" protobuf:"bytes,2,opt,name=github"`
 
-	// GenericWebHook contains the parameters for a Generic webhook type of trigger
-	GenericWebHook *WebHookTrigger `json:"generic,omitempty"`
+	// generic contains the parameters for a Generic webhook type of trigger
+	GenericWebHook *WebHookTrigger `json:"generic,omitempty" protobuf:"bytes,3,opt,name=generic"`
 
-	// ImageChange contains parameters for an ImageChange type of trigger
-	ImageChange *ImageChangeTrigger `json:"imageChange,omitempty"`
+	// imageChange contains parameters for an ImageChange type of trigger
+	ImageChange *ImageChangeTrigger `json:"imageChange,omitempty" protobuf:"bytes,4,opt,name=imageChange"`
 }
 
 // BuildTriggerType refers to a specific BuildTriggerPolicy implementation.
@@ -596,36 +731,40 @@ const (
 // BuildList is a collection of Builds.
 type BuildList struct {
 	unversioned.TypeMeta `json:",inline"`
-	// Standard object's metadata.
-	unversioned.ListMeta `json:"metadata,omitempty"`
+	// metadata for BuildList.
+	unversioned.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
-	// Items is a list of builds
-	Items []Build `json:"items"`
+	// items is a list of builds
+	Items []Build `json:"items" protobuf:"bytes,2,rep,name=items"`
 }
 
 // BuildConfigList is a collection of BuildConfigs.
 type BuildConfigList struct {
 	unversioned.TypeMeta `json:",inline"`
-	// Standard object's metadata.
-	unversioned.ListMeta `json:"metadata,omitempty"`
+	// metadata for BuildConfigList.
+	unversioned.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
-	// Items is a list of build configs
-	Items []BuildConfig `json:"items"`
+	// items is a list of build configs
+	Items []BuildConfig `json:"items" protobuf:"bytes,2,rep,name=items"`
 }
 
 // GenericWebHookEvent is the payload expected for a generic webhook post
 type GenericWebHookEvent struct {
-	// Type is the type of source repository
-	Type BuildSourceType `json:"type,omitempty"`
+	// type is the type of source repository
+	// +genconversion=false
+	Type BuildSourceType `json:"type,omitempty" protobuf:"bytes,1,opt,name=type,casttype=BuildSourceType"`
 
-	// Git is the git information if the Type is BuildSourceGit
-	Git *GitInfo `json:"git,omitempty"`
+	// git is the git information if the Type is BuildSourceGit
+	Git *GitInfo `json:"git,omitempty" protobuf:"bytes,2,opt,name=git"`
+
+	// env contains additional environment variables you want to pass into a builder container
+	Env []kapi.EnvVar `json:"env,omitempty" protobuf:"bytes,3,rep,name=env"`
 }
 
 // GitInfo is the aggregated git information for a generic webhook post
 type GitInfo struct {
-	GitBuildSource    `json:",inline"`
-	GitSourceRevision `json:",inline"`
+	GitBuildSource    `json:",inline" protobuf:"bytes,1,opt,name=gitBuildSource"`
+	GitSourceRevision `json:",inline" protobuf:"bytes,2,opt,name=gitSourceRevision"`
 }
 
 // BuildLog is the (unused) resource associated with the build log redirector
@@ -636,106 +775,110 @@ type BuildLog struct {
 // BuildRequest is the resource used to pass parameters to build generator
 type BuildRequest struct {
 	unversioned.TypeMeta `json:",inline"`
-	// Standard object's metadata.
-	kapi.ObjectMeta `json:"metadata,omitempty"`
+	// metadata for BuildRequest.
+	kapi.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
-	// Revision is the information from the source for a specific repo snapshot.
-	Revision *SourceRevision `json:"revision,omitempty"`
+	// revision is the information from the source for a specific repo snapshot.
+	Revision *SourceRevision `json:"revision,omitempty" protobuf:"bytes,2,opt,name=revision"`
 
-	// TriggeredByImage is the Image that triggered this build.
-	TriggeredByImage *kapi.ObjectReference `json:"triggeredByImage,omitempty"`
+	// triggeredByImage is the Image that triggered this build.
+	TriggeredByImage *kapi.ObjectReference `json:"triggeredByImage,omitempty" protobuf:"bytes,3,opt,name=triggeredByImage"`
 
-	// From is the reference to the ImageStreamTag that triggered the build.
-	From *kapi.ObjectReference `json:"from,omitempty"`
+	// from is the reference to the ImageStreamTag that triggered the build.
+	From *kapi.ObjectReference `json:"from,omitempty" protobuf:"bytes,4,opt,name=from"`
 
-	// Binary indicates a request to build from a binary provided to the builder
-	Binary *BinaryBuildSource `json:"binary,omitempty"`
+	// binary indicates a request to build from a binary provided to the builder
+	Binary *BinaryBuildSource `json:"binary,omitempty" protobuf:"bytes,5,opt,name=binary"`
 
-	// LastVersion (optional) is the LastVersion of the BuildConfig that was used
+	// lastVersion (optional) is the LastVersion of the BuildConfig that was used
 	// to generate the build. If the BuildConfig in the generator doesn't match, a build will
 	// not be generated.
-	LastVersion *int `json:"lastVersion,omitempty"`
+	LastVersion *int64 `json:"lastVersion,omitempty" protobuf:"varint,6,opt,name=lastVersion"`
 
-	// Env contains additional environment variables you want to pass into a builder container
-	Env []kapi.EnvVar `json:"env,omitempty"`
+	// env contains additional environment variables you want to pass into a builder container
+	Env []kapi.EnvVar `json:"env,omitempty" protobuf:"bytes,7,rep,name=env"`
+
+	// triggeredBy describes which triggers started the most recent update to the
+	// build configuration and contains information about those triggers.
+	TriggeredBy []BuildTriggerCause `json:"triggeredBy" protobuf:"bytes,8,rep,name=triggeredBy"`
 }
 
 // BinaryBuildRequestOptions are the options required to fully speficy a binary build request
 type BinaryBuildRequestOptions struct {
 	unversioned.TypeMeta `json:",inline"`
-	// Standard object's metadata.
-	kapi.ObjectMeta `json:"metadata,omitempty"`
+	// metadata for BinaryBuildRequestOptions.
+	kapi.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
-	// AsFile determines if the binary should be created as a file within the source rather than extracted as an archive
-	AsFile string `json:"asFile,omitempty"`
+	// asFile determines if the binary should be created as a file within the source rather than extracted as an archive
+	AsFile string `json:"asFile,omitempty" protobuf:"bytes,2,opt,name=asFile"`
 
 	// TODO: Improve map[string][]string conversion so we can handled nested objects
 
-	// Commit is the value identifying a specific commit
-	Commit string `json:"revision.commit,omitempty"`
+	// revision.commit is the value identifying a specific commit
+	Commit string `json:"revision.commit,omitempty" protobuf:"bytes,3,opt,name=revisionCommit"`
 
-	// Message is the description of a specific commit
-	Message string `json:"revision.message,omitempty"`
+	// revision.message is the description of a specific commit
+	Message string `json:"revision.message,omitempty" protobuf:"bytes,4,opt,name=revisionMessage"`
 
-	// AuthorName of the source control user
-	AuthorName string `json:"revision.authorName,omitempty"`
+	// revision.authorName of the source control user
+	AuthorName string `json:"revision.authorName,omitempty" protobuf:"bytes,5,opt,name=revisionAuthorName"`
 
-	// AuthorEmail of the source control user
-	AuthorEmail string `json:"revision.authorEmail,omitempty"`
+	// revision.authorEmail of the source control user
+	AuthorEmail string `json:"revision.authorEmail,omitempty" protobuf:"bytes,6,opt,name=revisionAuthorEmail"`
 
-	// CommitterName of the source control user
-	CommitterName string `json:"revision.committerName,omitempty"`
+	// revision.committerName of the source control user
+	CommitterName string `json:"revision.committerName,omitempty" protobuf:"bytes,7,opt,name=revisionCommitterName"`
 
-	// CommitterEmail of the source control user
-	CommitterEmail string `json:"revision.committerEmail,omitempty"`
+	// revision.committerEmail of the source control user
+	CommitterEmail string `json:"revision.committerEmail,omitempty" protobuf:"bytes,8,opt,name=revisionCommitterEmail"`
 }
 
 // BuildLogOptions is the REST options for a build log
 type BuildLogOptions struct {
 	unversioned.TypeMeta `json:",inline"`
 
-	// The container for which to stream logs. Defaults to only container if there is one container in the pod.
-	Container string `json:"container,omitempty"`
-	// Follow if true indicates that the build log should be streamed until
+	// cointainer for which to stream logs. Defaults to only container if there is one container in the pod.
+	Container string `json:"container,omitempty" protobuf:"bytes,1,opt,name=container"`
+	// follow if true indicates that the build log should be streamed until
 	// the build terminates.
-	Follow bool `json:"follow,omitempty"`
-	// Return previous build logs. Defaults to false.
-	Previous bool `json:"previous,omitempty"`
-	// A relative time in seconds before the current time from which to show logs. If this value
+	Follow bool `json:"follow,omitempty" protobuf:"varint,2,opt,name=follow"`
+	// previous returns previous build logs. Defaults to false.
+	Previous bool `json:"previous,omitempty" protobuf:"varint,3,opt,name=previous"`
+	// sinceSeconds is a relative time in seconds before the current time from which to show logs. If this value
 	// precedes the time a pod was started, only logs since the pod start will be returned.
 	// If this value is in the future, no logs will be returned.
 	// Only one of sinceSeconds or sinceTime may be specified.
-	SinceSeconds *int64 `json:"sinceSeconds,omitempty"`
-	// An RFC3339 timestamp from which to show logs. If this value
-	// preceeds the time a pod was started, only logs since the pod start will be returned.
+	SinceSeconds *int64 `json:"sinceSeconds,omitempty" protobuf:"varint,4,opt,name=sinceSeconds"`
+	// sinceTime is an RFC3339 timestamp from which to show logs. If this value
+	// precedes the time a pod was started, only logs since the pod start will be returned.
 	// If this value is in the future, no logs will be returned.
 	// Only one of sinceSeconds or sinceTime may be specified.
-	SinceTime *unversioned.Time `json:"sinceTime,omitempty"`
-	// If true, add an RFC3339 or RFC3339Nano timestamp at the beginning of every line
+	SinceTime *unversioned.Time `json:"sinceTime,omitempty" protobuf:"bytes,5,opt,name=sinceTime"`
+	// timestamps, If true, add an RFC3339 or RFC3339Nano timestamp at the beginning of every line
 	// of log output. Defaults to false.
-	Timestamps bool `json:"timestamps,omitempty"`
-	// If set, the number of lines from the end of the logs to show. If not specified,
+	Timestamps bool `json:"timestamps,omitempty" protobuf:"varint,6,opt,name=timestamps"`
+	// tailLines, If set, is the number of lines from the end of the logs to show. If not specified,
 	// logs are shown from the creation of the container or sinceSeconds or sinceTime
-	TailLines *int64 `json:"tailLines,omitempty"`
-	// If set, the number of bytes to read from the server before terminating the
+	TailLines *int64 `json:"tailLines,omitempty" protobuf:"varint,7,opt,name=tailLines"`
+	// limitBytes, If set, is the number of bytes to read from the server before terminating the
 	// log output. This may not display a complete final line of logging, and may return
 	// slightly more or slightly less than the specified limit.
-	LimitBytes *int64 `json:"limitBytes,omitempty"`
+	LimitBytes *int64 `json:"limitBytes,omitempty" protobuf:"varint,8,opt,name=limitBytes"`
 
-	// NoWait if true causes the call to return immediately even if the build
+	// noWait if true causes the call to return immediately even if the build
 	// is not available yet. Otherwise the server will wait until the build has started.
 	// TODO: Fix the tag to 'noWait' in v2
-	NoWait bool `json:"nowait,omitempty"`
+	NoWait bool `json:"nowait,omitempty" protobuf:"varint,9,opt,name=nowait"`
 
-	// Version of the build for which to view logs.
-	Version *int64 `json:"version,omitempty"`
+	// version of the build for which to view logs.
+	Version *int64 `json:"version,omitempty" protobuf:"varint,10,opt,name=version"`
 }
 
 // SecretSpec specifies a secret to be included in a build pod and its corresponding mount point
 type SecretSpec struct {
-	// SecretSource is a reference to the secret
-	SecretSource kapi.LocalObjectReference `json:"secretSource"`
+	// secretSource is a reference to the secret
+	SecretSource kapi.LocalObjectReference `json:"secretSource" protobuf:"bytes,1,opt,name=secretSource"`
 
-	// MountPath is the path at which to mount the secret
-	MountPath string `json:"mountPath"`
+	// mountPath is the path at which to mount the secret
+	MountPath string `json:"mountPath" protobuf:"bytes,2,opt,name=mountPath"`
 }

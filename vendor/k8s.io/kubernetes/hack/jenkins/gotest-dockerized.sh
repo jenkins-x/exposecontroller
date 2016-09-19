@@ -20,9 +20,8 @@ set -o pipefail
 set -o xtrace
 
 export REPO_DIR=${REPO_DIR:-$(pwd)}
-
-# Produce a JUnit-style XML test report for Jenkins.
-export KUBE_JUNIT_REPORT_DIR=${WORKSPACE}/_artifacts
+export HOST_ARTIFACTS_DIR=${WORKSPACE}/_artifacts
+mkdir -p "${HOST_ARTIFACTS_DIR}"
 
 # Run the kubekins container, mapping in docker (so we can launch containers),
 # the repo directory, and the artifacts output directory.
@@ -40,8 +39,11 @@ docker run --rm=true \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$(which docker)":/bin/docker \
   -v "${REPO_DIR}":/go/src/k8s.io/kubernetes \
-  -v "${KUBE_JUNIT_REPORT_DIR}":/workspace/artifacts \
+  -v "${WORKSPACE}/_artifacts":/workspace/artifacts \
   -v /etc/localtime:/etc/localtime:ro \
-  --env REPO_DIR="${REPO_DIR}" \
-  -i gcr.io/google_containers/kubekins-test:0.7 \
-  bash -c "cd kubernetes && ./hack/jenkins/test-dockerized.sh"
+  -e "KUBE_FORCE_VERIFY_CHECKS=${KUBE_FORCE_VERIFY_CHECKS:-}" \
+  -e "KUBE_VERIFY_GIT_BRANCH=${KUBE_VERIFY_GIT_BRANCH:-}" \
+  -e "REPO_DIR=${REPO_DIR}" \
+  -e "HOST_ARTIFACTS_DIR=${HOST_ARTIFACTS_DIR}" \
+  -i gcr.io/google_containers/kubekins-test:0.11 \
+  bash -c "cd kubernetes && ${KUBE_TEST_SCRIPT:-./hack/jenkins/test-dockerized.sh}"
