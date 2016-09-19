@@ -96,11 +96,7 @@ func (c *Client) AddEventListener(listener chan<- *APIEvents) error {
 			return err
 		}
 	}
-	err = c.eventMonitor.addListener(listener)
-	if err != nil {
-		return err
-	}
-	return nil
+	return c.eventMonitor.addListener(listener)
 }
 
 // RemoveEventListener removes a listener from the monitor.

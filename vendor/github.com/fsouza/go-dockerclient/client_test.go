@@ -832,7 +832,3 @@ type dumb struct {
 	Z      int     `qs:"zee"`
 	Person *person `qs:"p"`
 }
-
-type fakeEndpointURL struct {
-	Scheme string
-}

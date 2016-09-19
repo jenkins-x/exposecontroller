@@ -525,15 +525,14 @@ func (c *Client) stream(method, path string, streamOptions streamOptions) error 
 	defer cancelRequest()
 
 	if protocol == "unix" {
-		dial, err := c.Dialer.Dial(protocol, address)
+		var dial net.Conn
+		dial, err = c.Dialer.Dial(protocol, address)
 		if err != nil {
 			return err
 		}
 		go func() {
-			select {
-			case <-subCtx.Done():
-				dial.Close()
-			}
+			<-subCtx.Done()
+			dial.Close()
 		}()
 		breader := bufio.NewReader(dial)
 		err = req.Write(dial)

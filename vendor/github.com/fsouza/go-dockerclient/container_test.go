@@ -1203,7 +1203,7 @@ func TestCommitContainerParams(t *testing.T) {
 		}
 		if tt.body != nil {
 			if requestBody, err := ioutil.ReadAll(fakeRT.requests[0].Body); err == nil {
-				if bytes.Compare(requestBody, tt.body) != 0 {
+				if !bytes.Equal(requestBody, tt.body) {
 					t.Errorf("Expected body %#v, got %#v", tt.body, requestBody)
 				}
 			} else {
@@ -1766,6 +1766,9 @@ func runStreamConnServer(t *testing.T, network, laddr string, listening chan<- s
 	defer c.Close()
 	breader := bufio.NewReader(c)
 	req, err := http.ReadRequest(breader)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if path := "/containers/" + containerID + "/export"; req.URL.Path != path {
 		t.Errorf("wrong path. Want %q. Got %q", path, req.URL.Path)
 		return
@@ -2031,15 +2034,15 @@ func TestStatsTimeout(t *testing.T) {
 	received := make(chan bool)
 	defer l.Close()
 	go func() {
-		conn, err := l.Accept()
-		if err != nil {
-			t.Logf("Failed to accept connection: %s", err)
+		conn, connErr := l.Accept()
+		if connErr != nil {
+			t.Logf("Failed to accept connection: %s", connErr)
 			return
 		}
 		breader := bufio.NewReader(conn)
-		req, err := http.ReadRequest(breader)
-		if err != nil {
-			t.Logf("Failed to read request: %s", err)
+		req, connErr := http.ReadRequest(breader)
+		if connErr != nil {
+			t.Logf("Failed to read request: %s", connErr)
 			return
 		}
 		if req.URL.Path != "/containers/c/stats" {

@@ -68,7 +68,7 @@ func ExampleClient_BuildImage() {
 	}
 }
 
-func ExampleClient_ListenEvents() {
+func ExampleClient_AddEventListener() {
 	client, err := docker.NewClient("http://localhost:4243")
 	if err != nil {
 		log.Fatal(err)
@@ -96,7 +96,7 @@ func ExampleClient_ListenEvents() {
 		case msg := <-listener:
 			log.Println(msg)
 		case <-timeout:
-			break
+			return
 		}
 	}
 

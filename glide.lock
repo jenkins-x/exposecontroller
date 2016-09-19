@@ -1,8 +1,8 @@
 hash: 3ddce61275b7ef790f128290a6719e132b4cc79def185547f8575d3fe6512219
-updated: 2016-09-16T22:35:26.82105966+01:00
+updated: 2016-09-19T16:18:51.172699818+01:00
 imports:
 - name: cloud.google.com/go
-  version: 5fc8cacc02cfbb40ba736daedf7572d16decf187
+  version: 837ecd5c3c75f2e8304f300f8f1c883ee26cdee9
   subpackages:
   - compute/metadata
   - internal
@@ -47,7 +47,7 @@ imports:
   - reference
   - uuid
 - name: github.com/docker/docker
-  version: 94bc2b1bc07843087c0096d06fdb56d70aa45a02
+  version: c2d6e76a704604a964d2a593b8634d0bcbc53cd0
   subpackages:
   - api/types/filters
   - api/types/versions
@@ -85,14 +85,14 @@ imports:
 - name: github.com/docker/libtrust
   version: aabc10ec26b754e797f9028f4589c5b7bd90dc20
 - name: github.com/emicklei/go-restful
-  version: 7dd77babc0fbac18c02f6968b4dcf69e9c43bc73
+  version: c795848f1d7f574bbf767a8f17c7357e4003fed6
   subpackages:
   - log
   - swagger
 - name: github.com/evanphx/json-patch
   version: 30afec6a1650c11c861dc1fb58e100cd5219e490
 - name: github.com/fsouza/go-dockerclient
-  version: 01804dec8a84d0a77e63611f2b62d33e9bb2b64a
+  version: bff78c40efd52ccf0402c36ddca1f2488647e93a
 - name: github.com/ghodss/yaml
   version: aa0c862057666179de291b67d9f093d12b5a8473
 - name: github.com/gogo/protobuf
@@ -145,6 +145,8 @@ imports:
 - name: github.com/openshift/origin
   version: d45151824821195c9d3db7e5d2da0a1c982a614c
   subpackages:
+  - pkg/api
+  - pkg/api/extension
   - pkg/api/latest
   - pkg/authorization/api
   - pkg/build/api
@@ -156,7 +158,9 @@ imports:
   - pkg/quota/api
   - pkg/quota/util
   - pkg/route/api
+  - pkg/route/api/v1
   - pkg/sdn/api
+  - pkg/security/api
   - pkg/template/api
   - pkg/user/api
   - pkg/util/namer
@@ -174,7 +178,7 @@ imports:
   subpackages:
   - go
 - name: github.com/prometheus/common
-  version: 76316eadbb7895a0310c6098559b975216dc33bf
+  version: 9a94032291f2192936512bab367bc45e77990d6a
   subpackages:
   - expfmt
   - internal/bitbucket.org/ww/goautoneg

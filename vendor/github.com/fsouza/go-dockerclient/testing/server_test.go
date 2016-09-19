@@ -1547,7 +1547,7 @@ func TestBuildImageWithContentTypeTar(t *testing.T) {
 		t.Errorf("BuildImage: miss Dockerfile")
 		return
 	}
-	if _, ok := server.imgIDs[imageName]; ok == false {
+	if _, ok := server.imgIDs[imageName]; !ok {
 		t.Errorf("BuildImage: image %s not builded", imageName)
 	}
 }
@@ -1558,7 +1558,7 @@ func TestBuildImageWithRemoteDockerfile(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request, _ := http.NewRequest("POST", "/build?t=teste&remote=http://localhost/Dockerfile", nil)
 	server.buildImage(recorder, request)
-	if _, ok := server.imgIDs[imageName]; ok == false {
+	if _, ok := server.imgIDs[imageName]; !ok {
 		t.Errorf("BuildImage: image %s not builded", imageName)
 	}
 }
