@@ -13,10 +13,10 @@ node{
     export GOPATH=/home/jenkins/workspace/workspace/go;
     mkdir -p ../go/src/github.com/fabric8io/exposecontroller; 
     cp -R ../${env.JOB_NAME}/. ../go/src/github.com/fabric8io/exposecontroller/; 
-    cd ../go/src/github.com/fabric8io/exposecontroller; make build test lint
+    cd ../go/src/github.com/fabric8io/exposecontroller; make
     """
 
-    sh "cp -R ../go/src/github.com/fabric8io/exposecontroller/bin ."
+    sh "cp -R ../go/src/github.com/fabric8io/exposecontroller/out/exposecontroller-linux-amd64 ."
 
     def imageName = 'exposecontroller'
     def tag = 'latest'
