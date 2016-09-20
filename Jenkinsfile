@@ -16,7 +16,7 @@ node{
     cd ../go/src/github.com/fabric8io/exposecontroller; make
     """
 
-    sh "cp -R ../go/src/github.com/fabric8io/exposecontroller/out/exposecontroller-linux-amd64 ."
+    sh "cp -R ../go/src/github.com/fabric8io/exposecontroller/out ."
 
     def imageName = 'exposecontroller'
     def tag = 'latest'
