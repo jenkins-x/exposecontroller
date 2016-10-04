@@ -41,8 +41,6 @@ BUILDFLAGS := -ldflags \
     -X $(ROOT_PACKAGE)/version.GoVersion='$(GO_VERSION)'\
     -s -w -extldflags '-static'"
 
-MKGOPATH := if [ ! -e $(GOPATH)/src/$(ORG) ]; then mkdir -p $(GOPATH)/src/$(ORG) && ln -s -f $(shell pwd) $(GOPATH)/src/$(ORG); fi
-
 GOFILES := go list  -f '{{join .Deps "\n"}}' $(REPOPATH) | grep $(REPOPATH) | xargs go list -f '{{ range $$file := .GoFiles }} {{$$.Dir}}/{{$$file}}{{"\n"}}{{end}}'
 GOPACKAGES := $(shell go list ./... | grep -v /vendor/)
 
@@ -55,25 +53,20 @@ $(ORIGINAL_GOPATH)/bin/exposecontroller: out/exposecontroller-$(GOOS)-$(GOARCH)
 out/exposecontroller: out/exposecontroller-$(GOOS)-$(GOARCH)
 	cp $(BUILD_DIR)/exposecontroller-$(GOOS)-$(GOARCH) $(BUILD_DIR)/exposecontroller
 
-out/exposecontroller-darwin-amd64: $(shell $(GOFILES)) version/VERSION
-	$(MKGOPATH)
+out/exposecontroller-darwin-amd64: gopath $(shell $(GOFILES)) version/VERSION
 	CGO_ENABLED=0 GOARCH=amd64 GOOS=darwin go build $(BUILDFLAGS) -o $(BUILD_DIR)/exposecontroller-darwin-amd64 $(ROOT_PACKAGE)
 
-out/exposecontroller-linux-amd64: $(shell $(GOFILES)) version/VERSION
-	$(MKGOPATH)
+out/exposecontroller-linux-amd64: gopath $(shell $(GOFILES)) version/VERSION
 	CGO_ENABLED=0 GOARCH=amd64 GOOS=linux go build $(BUILDFLAGS) -o $(BUILD_DIR)/exposecontroller-linux-amd64 $(ROOT_PACKAGE)
 
-out/exposecontroller-windows-amd64.exe: $(shell $(GOFILES)) version/VERSION
-	$(MKGOPATH)
+out/exposecontroller-windows-amd64.exe: gopath $(shell $(GOFILES)) version/VERSION
 	CGO_ENABLED=0 GOARCH=amd64 GOOS=windows go build $(BUILDFLAGS) -o $(BUILD_DIR)/exposecontroller-windows-amd64.exe $(ROOT_PACKAGE)
 
 .PHONY: test
-test:
-	$(MKGOPATH)
+test: gopath
 	go test -v $(GOPACKAGES)
 
-$(GOPATH)/bin/gh-release:
-	$(MKGOPATH)
+$(GOPATH)/bin/gh-release: gopath
 	go get github.com/progrium/gh-release
 
 .PHONY: release
@@ -85,6 +78,14 @@ release: clean test $(GOPATH)/bin/gh-release cross
 
 .PHONY: cross
 cross: out/exposecontroller-linux-amd64 out/exposecontroller-darwin-amd64 out/exposecontroller-windows-amd64.exe
+
+.PHONY: gopath
+gopath: $(GOPATH)/src/$(ORG)
+
+$(GOPATH)/src/$(ORG):
+	mkdir -p $(GOPATH)/src/$(ORG)
+	ln -s -f $(shell pwd) $(GOPATH)/src/$(ORG)
+
 
 .PHONY: clean
 clean:
