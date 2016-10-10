@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/golang/glog"
 	"github.com/pkg/errors"
-
 	"k8s.io/kubernetes/pkg/api"
 	apierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/v1"
@@ -33,7 +33,11 @@ func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain s
 	}
 
 	if len(domain) == 0 {
-		return nil, errors.New("domain is required")
+		domain, err = getAutoDefaultDomain(client)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get a domain")
+		}
+		glog.Infof("Using domain: %s", domain)
 	}
 
 	return &IngressStrategy{

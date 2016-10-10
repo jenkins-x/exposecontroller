@@ -1,14 +1,15 @@
 apiVersion: "v1"
 data:
   config.yml: |-
-    domain: replace.me.io
-    exposer: NodePort
+    domain: 
+    exposer: 
     # exposer: LoadBalancer
     # exposer: Ingress
     # exposer: Route
+    # exposer: NodePort
 kind: "ConfigMap"
 metadata:
   labels:
     provider: "fabric8"
     project: "exposecontroller"
-  name: "exposecontroller-cm"
+  name: "exposecontroller"
