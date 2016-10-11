@@ -1,6 +1,7 @@
 ---
-domain: replace.me.io
-exposer: NodePort
+domain: 
+exposer: 
 #exposer: Ingress
 #exposer: LoadBalancer
 #exposer: Route
+#exposer: NodePort

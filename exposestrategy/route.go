@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/golang/glog"
 	"github.com/pkg/errors"
 
 	oclient "github.com/openshift/origin/pkg/client"
@@ -36,7 +37,11 @@ func NewRouteStrategy(client *client.Client, oclient *oclient.Client, encoder ru
 	}
 
 	if len(domain) == 0 {
-		return nil, errors.New("domain is required")
+		domain, err = getAutoDefaultDomain(client)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get a domain")
+		}
+		glog.Infof("Using domain: %s", domain)
 	}
 
 	rapi.AddToScheme(api.Scheme)

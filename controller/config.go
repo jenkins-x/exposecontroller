@@ -3,16 +3,23 @@ package controller
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
 
+	"github.com/golang/glog"
 	"github.com/pkg/errors"
 	"gopkg.in/v2/yaml"
 )
 
 func LoadFile(path string) (*Config, error) {
 	content, err := ioutil.ReadFile(path)
+
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read config file")
+		if !os.IsNotExist(err) {
+			return nil, errors.Wrap(err, "failed to read config file")
+		}
+		glog.Infof("No %s file found.  Will try to figure out defaults", path)
 	}
+
 	c, err := Load(string(content))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read config file")
@@ -57,13 +64,6 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	err := unmarshal((*plain)(c))
 	if err != nil {
 		return err
-	}
-
-	if len(c.Domain) == 0 {
-		return fmt.Errorf("domain is required")
-	}
-	if len(c.Exposer) == 0 {
-		return fmt.Errorf("exposer is required")
 	}
 
 	return nil

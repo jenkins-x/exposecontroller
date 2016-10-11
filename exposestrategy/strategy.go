@@ -58,7 +58,13 @@ func New(exposer, domain string, client *client.Client, restClientConfig *restcl
 			return nil, errors.Wrap(err, "failed to create ingress expose strategy")
 		}
 		return strategy, nil
+	case "":
+		strategy, err := NewAutoStrategy(exposer, domain, client, restClientConfig, encoder)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create auto expose strategy")
+		}
+		return strategy, nil
 	default:
-		return nil, errors.Errorf("unknown expose strategy '%s', must be one of %v", exposer, []string{"Ingress", "Route", "NodePort", "LoadBalancer"})
+		return nil, errors.Errorf("unknown expose strategy '%s', must be one of %v", exposer, []string{"Auto", "Ingress", "Route", "NodePort", "LoadBalancer"})
 	}
 }
