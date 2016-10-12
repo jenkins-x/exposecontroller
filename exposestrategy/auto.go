@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	ingress            = "route"
+	ingress            = "ingress"
 	loadBalancer       = "loadbalancer"
 	nodePort           = "nodeport"
 	route              = "route"
