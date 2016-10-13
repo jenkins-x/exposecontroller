@@ -86,7 +86,7 @@ func getAutoDefaultDomain(c *client.Client) (string, error) {
 	}
 
 	// check for a gofabric8 ingress labelled node
-	selector, err := unversioned.LabelSelectorAsSelector(&unversioned.LabelSelector{MatchLabels: map[string]string{"fabric8.io/externalIP": "fabric8"}})
+	selector, err := unversioned.LabelSelectorAsSelector(&unversioned.LabelSelector{MatchLabels: map[string]string{"fabric8.io/externalIP": "true"}})
 	nodes, err = c.Nodes().List(api.ListOptions{LabelSelector: selector})
 	if len(nodes.Items) == 1 {
 		node := nodes.Items[0]
