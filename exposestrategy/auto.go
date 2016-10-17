@@ -114,13 +114,20 @@ func getAutoDefaultDomain(c *client.Client) (string, error) {
 	return "", errors.New("no known automatic ways to get an external ip to use with xip")
 }
 
+// copied from k8s.io/kubernetes/pkg/master/master.go
 func getExternalIP(node api.Node) (string, error) {
-
-	addresses := node.Status.Addresses
-	for _, a := range addresses {
-		if a.Type == api.NodeExternalIP || a.Type == api.NodeLegacyHostIP {
-			return a.Address, nil
+	var fallback string
+	for ix := range node.Status.Addresses {
+		addr := &node.Status.Addresses[ix]
+		if addr.Type == api.NodeExternalIP {
+			return addr.Address, nil
 		}
+		if fallback == "" && addr.Type == api.NodeLegacyHostIP {
+			fallback = addr.Address
+		}
+	}
+	if fallback != "" {
+		return fallback, nil
 	}
 	return "", errors.New("no node ExternalIP or LegacyHostIP found")
 }
