@@ -12,6 +12,7 @@ import (
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/util/intstr"
 )
 
 type IngressStrategy struct {
@@ -81,9 +82,7 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 						{
 							Backend: extensions.IngressBackend{
 								ServiceName: svc.Name,
-								// we need to use target port until https://github.com/nginxinc/kubernetes-ingress/issues/41 is fixed
-								//ServicePort: intstr.FromInt(port.Port),
-								ServicePort: port.TargetPort,
+								ServicePort: intstr.FromInt(int(port.Port)),
 							},
 						},
 					},
