@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -11,12 +12,17 @@ import (
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/record"
 	"k8s.io/kubernetes/pkg/client/restclient"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/watch"
+	client "k8s.io/kubernetes/pkg/client/unversioned"
+	uapi "k8s.io/kubernetes/pkg/api/unversioned"
 
 	"github.com/fabric8io/exposecontroller/exposestrategy"
+
+	oclient "github.com/openshift/origin/pkg/client"
+	oauthapi "github.com/openshift/origin/pkg/oauth/api"
+	oauthapiv1 "github.com/openshift/origin/pkg/oauth/api/v1"
 )
 
 type Controller struct {
@@ -55,6 +61,19 @@ func NewController(
 		return nil, errors.Wrap(err, "failed to create new strategy")
 	}
 
+	var oc *oclient.Client = nil
+	if isOpenShift(kubeClient) {
+		// register openshift schemas
+		oauthapi.AddToScheme(api.Scheme)
+		oauthapiv1.AddToScheme(api.Scheme)
+
+		ocfg := *restClientConfig
+		ocfg.APIPath = ""
+		ocfg.GroupVersion = nil
+		ocfg.NegotiatedSerializer = nil
+		oc, _ = oclient.New(&ocfg)
+	}
+
 	c.svcLister.Store, c.svcController = framework.NewInformer(
 		&cache.ListWatch{
 			ListFunc:  serviceListFunc(c.client, namespace),
@@ -70,6 +89,7 @@ func NewController(
 					if err != nil {
 						glog.Errorf("Add failed: %v", err)
 					}
+					updateServiceOAuthClient(oc, svc)
 				}
 			},
 			UpdateFunc: func(oldObj interface{}, newObj interface{}) {
@@ -79,6 +99,7 @@ func NewController(
 					if err != nil {
 						glog.Errorf("Add failed: %v", err)
 					}
+					updateServiceOAuthClient(oc, svc)
 				} else {
 					oldSvc := oldObj.(*api.Service)
 					if oldSvc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value {
@@ -86,6 +107,7 @@ func NewController(
 						if err != nil {
 							glog.Errorf("Remove failed: %v", err)
 						}
+						updateServiceOAuthClient(oc, svc)
 					}
 				}
 			},
@@ -107,6 +129,65 @@ func NewController(
 
 	return &c, nil
 }
+
+
+func isOpenShift(c *client.Client) bool {
+	res, err := c.Get().AbsPath("").DoRaw()
+	if err != nil {
+		glog.Errorf("Could not discover the type of your installation: %v", err)
+		return false
+	}
+
+	var rp uapi.RootPaths
+	err = json.Unmarshal(res, &rp)
+	if err != nil {
+		glog.Errorf("Could not discover the type of your installation: %v", err)
+		return false
+	}
+	for _, p := range rp.Paths {
+		if p == "/oapi" {
+			return true
+		}
+	}
+	return false
+}
+
+func updateServiceOAuthClient(oc *oclient.Client, svc *api.Service) {
+	if oc != nil {
+		name := svc.Name
+		exposeUrl := svc.Annotations[exposestrategy.ExposeAnnotationKey]
+		if len(exposeUrl) > 0 {
+			oauthClient, err := oc.OAuthClients().Get(name)
+			if err == nil {
+				redirects := oauthClient.RedirectURIs
+				found := false
+				for _, uri := range redirects {
+					if uri == exposeUrl {
+						found = true
+						break
+					}
+				}
+				if !found {
+					oauthClient.RedirectURIs = append(redirects, exposeUrl)
+					glog.Infof("Deleting OAuthClient %s", name)
+					err = oc.OAuthClients().Delete(name)
+					if err != nil {
+						glog.Errorf("Failed to delete OAuthClient %s error: %v", name, err)
+						return
+					}
+					oauthClient.ResourceVersion = ""
+					glog.Infof("Creating OAuthClient %s with redirectURIs %v", name, oauthClient.RedirectURIs)
+					_, err = oc.OAuthClients().Create(oauthClient)
+					if err != nil {
+						glog.Errorf("Failed to delete OAuthClient %s error: %v", name, err)
+						return
+					}
+				}
+			}
+		}
+	}
+}
+
 
 // Run starts the controller.
 func (c *Controller) Run() {
