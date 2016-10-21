@@ -77,6 +77,30 @@ kubectl label svc foo expose=true
 
 __exposecontroller__ will use your `exposer` type in the configmap above to automatically watch for new services and create ingress / routes / nodeports / loadbalacers for you.
 
+## Using the expose URL in other resources
+
+Having an external URL is extremely useful. Here are some other uses of the expose URL in addition to the annotation that gets applied to the Service
+
+### ConfigMap
+
+Sometimes web applications need to know their external URL so that they can use that link or host/port when generating documentation or links.
+
+For example the [gogs application](https://github.com/fabric8io/fabric8-devops/tree/master/gogs) needs to know its external URL so that it can show the user how to do a git clone from the command line.
+
+If you wish to enable injection of the expose URL into a `ConfigMap` then 
+
+* create a `ConfigMap` with the same name as the `Service` and in the same namespace
+* add the annotation `expose-url.fabric8.io/url-key` for the key in the `ConfigMap.Data` you wish to store the expose URL
+* add the annotation `expose-url.fabric8.io/host-key` for the key in the `ConfigMap.Data` you wish to store the `host` or `host:port` of the URL
+
+There is an [example of the use of these annotations in the gogs ConfigMap](https://github.com/fabric8io/fabric8-devops/blob/master/gogs/src/main/fabric8/gogs-cm.yml#L29)
+
+### OAuthClient
+
+When using OpenShift and `OAuthClient` you need to ensure your external URL is added to the `redirectURIs` property in the `OAuthClient`.
+
+If you create your `OAuthClient` in the same namespace with the same name as your `Service` then it will have its expose URL added automatically to the `redirectURIs`
+
 ## Building
 
  * install [go version 1.7.1 or later](https://golang.org/doc/install)

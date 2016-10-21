@@ -23,6 +23,12 @@ import (
 	oclient "github.com/openshift/origin/pkg/client"
 	oauthapi "github.com/openshift/origin/pkg/oauth/api"
 	oauthapiv1 "github.com/openshift/origin/pkg/oauth/api/v1"
+	"net/url"
+)
+
+const (
+	ExposeURLKeyAnnotation = "expose-url.fabric8.io/url-key"
+	ExposeURLHostKeyAnnotation = "expose-url.fabric8.io/host-key"
 )
 
 type Controller struct {
@@ -89,7 +95,7 @@ func NewController(
 					if err != nil {
 						glog.Errorf("Add failed: %v", err)
 					}
-					updateServiceOAuthClient(oc, svc)
+					updateRelatedResources(kubeClient, oc, svc)
 				}
 			},
 			UpdateFunc: func(oldObj interface{}, newObj interface{}) {
@@ -99,7 +105,7 @@ func NewController(
 					if err != nil {
 						glog.Errorf("Add failed: %v", err)
 					}
-					updateServiceOAuthClient(oc, svc)
+					updateRelatedResources(kubeClient, oc, svc)
 				} else {
 					oldSvc := oldObj.(*api.Service)
 					if oldSvc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value {
@@ -107,7 +113,7 @@ func NewController(
 						if err != nil {
 							glog.Errorf("Remove failed: %v", err)
 						}
-						updateServiceOAuthClient(oc, svc)
+						updateRelatedResources(kubeClient, oc, svc)
 					}
 				}
 			},
@@ -152,36 +158,83 @@ func isOpenShift(c *client.Client) bool {
 	return false
 }
 
-func updateServiceOAuthClient(oc *oclient.Client, svc *api.Service) {
+func updateRelatedResources(c *client.Client, oc *oclient.Client, svc *api.Service) {
+	updateServiceConfigMap(c, svc)
 	if oc != nil {
-		name := svc.Name
-		exposeUrl := svc.Annotations[exposestrategy.ExposeAnnotationKey]
-		if len(exposeUrl) > 0 {
-			oauthClient, err := oc.OAuthClients().Get(name)
-			if err == nil {
-				redirects := oauthClient.RedirectURIs
-				found := false
-				for _, uri := range redirects {
-					if uri == exposeUrl {
-						found = true
-						break
-					}
+		updateServiceOAuthClient(oc, svc)
+	}
+}
+
+
+func updateServiceConfigMap(c *client.Client, svc *api.Service) {
+	name := svc.Name
+	ns := svc.Namespace
+	exposeURL := svc.Annotations[exposestrategy.ExposeAnnotationKey]
+	if len(exposeURL) > 0 {
+		host := ""
+		cm, err := c.ConfigMaps(ns).Get(name)
+		if err == nil {
+			url, err := url.Parse(exposeURL)
+			if err != nil {
+				glog.Errorf("Failed to parse expose URL %s for service %s  error: %v", exposeURL, name, err)
+
+			} else {
+				host = url.Host
+			}
+			updated := false
+			urlKey := cm.Annotations[ExposeURLKeyAnnotation]
+			domainKey := cm.Annotations[ExposeURLHostKeyAnnotation]
+			if len(urlKey) > 0 {
+				if cm.Data[urlKey] != exposeURL {
+					cm.Data[urlKey] = exposeURL
+					updated = true
 				}
-				if !found {
-					oauthClient.RedirectURIs = append(redirects, exposeUrl)
-					glog.Infof("Deleting OAuthClient %s", name)
-					err = oc.OAuthClients().Delete(name)
-					if err != nil {
-						glog.Errorf("Failed to delete OAuthClient %s error: %v", name, err)
-						return
-					}
-					oauthClient.ResourceVersion = ""
-					glog.Infof("Creating OAuthClient %s with redirectURIs %v", name, oauthClient.RedirectURIs)
-					_, err = oc.OAuthClients().Create(oauthClient)
-					if err != nil {
-						glog.Errorf("Failed to delete OAuthClient %s error: %v", name, err)
-						return
-					}
+			}
+			if len(host) > 0 && len(domainKey) > 0 {
+				if cm.Data[domainKey] != host {
+					cm.Data[domainKey] = host
+					updated = true
+				}
+			}
+			if updated {
+				glog.Infof("Updating ConfigMap %s/%s", ns, name)
+				_, err = c.ConfigMaps(ns).Update(cm)
+				if err != nil {
+					glog.Errorf("Failed to update ConfigMap %s error: %v", name, err)
+				}
+			}
+		}
+	}
+}
+
+func updateServiceOAuthClient(oc *oclient.Client, svc *api.Service) {
+	name := svc.Name
+	exposeURL := svc.Annotations[exposestrategy.ExposeAnnotationKey]
+	if len(exposeURL) > 0 {
+		oauthClient, err := oc.OAuthClients().Get(name)
+		if err == nil {
+			redirects := oauthClient.RedirectURIs
+			found := false
+			for _, uri := range redirects {
+				if uri == exposeURL {
+					found = true
+					break
+				}
+			}
+			if !found {
+				oauthClient.RedirectURIs = append(redirects, exposeURL)
+				glog.Infof("Deleting OAuthClient %s", name)
+				err = oc.OAuthClients().Delete(name)
+				if err != nil {
+					glog.Errorf("Failed to delete OAuthClient %s error: %v", name, err)
+					return
+				}
+				oauthClient.ResourceVersion = ""
+				glog.Infof("Creating OAuthClient %s with redirectURIs %v", name, oauthClient.RedirectURIs)
+				_, err = oc.OAuthClients().Create(oauthClient)
+				if err != nil {
+					glog.Errorf("Failed to delete OAuthClient %s error: %v", name, err)
+					return
 				}
 			}
 		}
