@@ -2,6 +2,8 @@ package controller
 
 import (
 	"encoding/json"
+	"net/url"
+	"net/http"
 	"strings"
 	"time"
 
@@ -23,12 +25,13 @@ import (
 	oclient "github.com/openshift/origin/pkg/client"
 	oauthapi "github.com/openshift/origin/pkg/oauth/api"
 	oauthapiv1 "github.com/openshift/origin/pkg/oauth/api/v1"
-	"net/url"
 )
 
 const (
-	ExposeURLKeyAnnotation = "expose-url.fabric8.io/url-key"
-	ExposeURLHostKeyAnnotation = "expose-url.fabric8.io/host-key"
+	ExposeConfigURLKeyAnnotation = "expose.config.fabric8.io/url-key"
+	ExposeConfigHostKeyAnnotation = "expose.config.fabric8.io/host-key"
+	ExposeConfigApiServerKeyAnnotation = "expose.config.fabric8.io/apiserver-key"
+	ExposeConfigOAuthAuthorizeURLKeyAnnotation = "expose.config.fabric8.io/oauth-authorize-url-key"
 )
 
 type Controller struct {
@@ -68,6 +71,7 @@ func NewController(
 	}
 
 	var oc *oclient.Client = nil
+	authorizeURL := ""
 	if isOpenShift(kubeClient) {
 		// register openshift schemas
 		oauthapi.AddToScheme(api.Scheme)
@@ -78,6 +82,26 @@ func NewController(
 		ocfg.GroupVersion = nil
 		ocfg.NegotiatedSerializer = nil
 		oc, _ = oclient.New(&ocfg)
+
+
+		authorizeURL = findOAuthAuthorizeURL()
+		if len(authorizeURL) == 0 {
+			authorizeURL = config.ApiServer
+			if len(authorizeURL) > 0 {
+				if (!strings.HasPrefix(authorizeURL, "http:") && !strings.HasPrefix(authorizeURL, "https:")) {
+					authorizeURL = "https://" + authorizeURL
+				}
+				authPath := config.AuthorizePath
+				if len(authPath) == 0 {
+					authPath = "/oauth/authorize"
+				}
+				if (!strings.HasPrefix(authPath, "/")) {
+					authPath = "/" + authPath
+				}
+				authorizeURL = strings.TrimSuffix(authorizeURL, "/") + authPath;
+			}
+		}
+		glog.Infof("Using OAuth Authorize URL: %s", authorizeURL)
 	}
 
 	c.svcLister.Store, c.svcController = framework.NewInformer(
@@ -95,7 +119,7 @@ func NewController(
 					if err != nil {
 						glog.Errorf("Add failed: %v", err)
 					}
-					updateRelatedResources(kubeClient, oc, svc)
+					updateRelatedResources(kubeClient, oc, svc, config, authorizeURL)
 				}
 			},
 			UpdateFunc: func(oldObj interface{}, newObj interface{}) {
@@ -105,7 +129,7 @@ func NewController(
 					if err != nil {
 						glog.Errorf("Add failed: %v", err)
 					}
-					updateRelatedResources(kubeClient, oc, svc)
+					updateRelatedResources(kubeClient, oc, svc, config, authorizeURL)
 				} else {
 					oldSvc := oldObj.(*api.Service)
 					if oldSvc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value {
@@ -113,7 +137,7 @@ func NewController(
 						if err != nil {
 							glog.Errorf("Remove failed: %v", err)
 						}
-						updateRelatedResources(kubeClient, oc, svc)
+						updateRelatedResources(kubeClient, oc, svc, config, authorizeURL)
 					}
 				}
 			},
@@ -158,22 +182,44 @@ func isOpenShift(c *client.Client) bool {
 	return false
 }
 
-func updateRelatedResources(c *client.Client, oc *oclient.Client, svc *api.Service) {
-	updateServiceConfigMap(c, svc)
+func updateRelatedResources(c *client.Client, oc *oclient.Client, svc *api.Service, config *Config, authorizeURL string) {
+	updateServiceConfigMap(c, oc, svc, config, authorizeURL)
+
 	if oc != nil {
 		updateServiceOAuthClient(oc, svc)
 	}
 }
 
-
-func updateServiceConfigMap(c *client.Client, svc *api.Service) {
+func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Service, config *Config, authorizeURL string) {
 	name := svc.Name
 	ns := svc.Namespace
-	exposeURL := svc.Annotations[exposestrategy.ExposeAnnotationKey]
-	if len(exposeURL) > 0 {
-		host := ""
-		cm, err := c.ConfigMaps(ns).Get(name)
-		if err == nil {
+	cm, err := c.ConfigMaps(ns).Get(name)
+	if err == nil {
+		updated := false
+		apiserver := config.ApiServer
+
+		if len(apiserver) > 0 {
+			apiServerKey := cm.Annotations[ExposeConfigApiServerKeyAnnotation]
+			if len(apiServerKey) > 0 {
+				if cm.Data[apiServerKey] != apiserver {
+					cm.Data[apiServerKey] = apiserver
+					updated = true
+				}
+			}
+		}
+		if len(authorizeURL) > 0 && oc != nil {
+			authorizeURLKey := cm.Annotations[ExposeConfigOAuthAuthorizeURLKeyAnnotation]
+			if len(authorizeURLKey) > 0 {
+				if cm.Data[authorizeURLKey] != authorizeURL {
+					cm.Data[authorizeURLKey] = authorizeURL
+					updated = true
+				}
+			}
+		}
+
+		exposeURL := svc.Annotations[exposestrategy.ExposeAnnotationKey]
+		if len(exposeURL) > 0 {
+			host := ""
 			url, err := url.Parse(exposeURL)
 			if err != nil {
 				glog.Errorf("Failed to parse expose URL %s for service %s  error: %v", exposeURL, name, err)
@@ -181,9 +227,8 @@ func updateServiceConfigMap(c *client.Client, svc *api.Service) {
 			} else {
 				host = url.Host
 			}
-			updated := false
-			urlKey := cm.Annotations[ExposeURLKeyAnnotation]
-			domainKey := cm.Annotations[ExposeURLHostKeyAnnotation]
+			urlKey := cm.Annotations[ExposeConfigURLKeyAnnotation]
+			domainKey := cm.Annotations[ExposeConfigHostKeyAnnotation]
 			if len(urlKey) > 0 {
 				if cm.Data[urlKey] != exposeURL {
 					cm.Data[urlKey] = exposeURL
@@ -196,15 +241,42 @@ func updateServiceConfigMap(c *client.Client, svc *api.Service) {
 					updated = true
 				}
 			}
-			if updated {
-				glog.Infof("Updating ConfigMap %s/%s", ns, name)
-				_, err = c.ConfigMaps(ns).Update(cm)
-				if err != nil {
-					glog.Errorf("Failed to update ConfigMap %s error: %v", name, err)
-				}
+		}
+		if updated {
+			glog.Infof("Updating ConfigMap %s/%s", ns, name)
+			_, err = c.ConfigMaps(ns).Update(cm)
+			if err != nil {
+				glog.Errorf("Failed to update ConfigMap %s error: %v", name, err)
 			}
 		}
 	}
+}
+
+// findOAuthAuthorizeURL uses this endpoint: https://github.com/openshift/origin/pull/10845
+func findOAuthAuthorizeURL() string {
+	url := "https://openshift.default.svc/.well-known/oauth-authorization-server"
+	// test data
+	//url := "https://gist.githubusercontent.com/jstrachan/dbb2066d89810ef1fa53c1df118ccb41/raw/e60a2d42e11930eef13a4264d35514ffd365c8af/dummy.json"
+	r, err := http.Get(url)
+	if err != nil {
+		glog.Warningf("Failed to load url %s got: %v", url, err)
+		return ""
+	}
+	defer r.Body.Close()
+
+	var target OAuthServer
+	err = json.NewDecoder(r.Body).Decode(&target)
+	if err != nil {
+		glog.Warningf("Failed to decode JSON from %s got: %v", url, err)
+		return ""
+	}
+	return target.AuthorizationEndpoint
+}
+
+type OAuthServer struct {
+	Issuer string 			 `json:"issuer,omitempty"`
+	AuthorizationEndpoint string     `json:"authorization_endpoint,omitempty"`
+	TokenEndpoint string             `json:"token_endpoint,omitempty"`
 }
 
 func updateServiceOAuthClient(oc *oclient.Client, svc *api.Service) {
