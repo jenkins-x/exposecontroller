@@ -90,8 +90,10 @@ For example the [gogs application](https://github.com/fabric8io/fabric8-devops/t
 If you wish to enable injection of the expose URL into a `ConfigMap` then 
 
 * create a `ConfigMap` with the same name as the `Service` and in the same namespace
-* add the annotation `expose-url.fabric8.io/url-key` for the key in the `ConfigMap.Data` you wish to store the expose URL
-* add the annotation `expose-url.fabric8.io/host-key` for the key in the `ConfigMap.Data` you wish to store the `host` or `host:port` of the URL
+* add the annotation `expose.config.fabric8.io/url-key` for the key in the `ConfigMap.Data` you wish to store the expose URL
+* add the annotation `expose.config.fabric8.io/host-key` for the key in the `ConfigMap.Data` you wish to store the `host` or `host:port` of the URL
+* add the annotation `expose.config.fabric8.io/apiserver-key` for the key in the `ConfigMap.Data` you wish to store the apiserver host and port
+* add the annotation `expose.config.fabric8.io/oauth-authorize-url-key` for the key in the `ConfigMap.Data` you wish to store the OAuth Authorize URL
 
 There is an [example of the use of these annotations in the gogs ConfigMap](https://github.com/fabric8io/fabric8-devops/blob/master/gogs/src/main/fabric8/gogs-cm.yml#L29)
 

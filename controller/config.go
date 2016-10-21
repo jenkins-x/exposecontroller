@@ -44,8 +44,10 @@ func Load(s string) (*Config, error) {
 }
 
 type Config struct {
-	Domain  string `yaml:"domain,omitempty"`
-	Exposer string `yaml:"exposer"`
+	Domain        string `yaml:"domain,omitempty"`
+	Exposer       string `yaml:"exposer"`
+	ApiServer     string `yaml:"apiserver,omitempty"`
+	AuthorizePath string `yaml:"authorize-path,omitempty"`
 
 	// original is the input from which the config was parsed.
 	original string

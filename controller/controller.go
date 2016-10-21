@@ -24,11 +24,14 @@ import (
 	oauthapi "github.com/openshift/origin/pkg/oauth/api"
 	oauthapiv1 "github.com/openshift/origin/pkg/oauth/api/v1"
 	"net/url"
+	"path"
 )
 
 const (
-	ExposeURLKeyAnnotation = "expose-url.fabric8.io/url-key"
-	ExposeURLHostKeyAnnotation = "expose-url.fabric8.io/host-key"
+	ExposeConfigURLKeyAnnotation = "expose.config.fabric8.io/url-key"
+	ExposeConfigHostKeyAnnotation = "expose.config.fabric8.io/host-key"
+	ExposeConfigApiServerKeyAnnotation = "expose.config.fabric8.io/apiserver-key"
+	ExposeConfigOAuthAuthorizeURLKeyAnnotation = "expose.config.fabric8.io/oauth-authorize-url-key"
 )
 
 type Controller struct {
@@ -95,7 +98,7 @@ func NewController(
 					if err != nil {
 						glog.Errorf("Add failed: %v", err)
 					}
-					updateRelatedResources(kubeClient, oc, svc)
+					updateRelatedResources(kubeClient, oc, svc, config)
 				}
 			},
 			UpdateFunc: func(oldObj interface{}, newObj interface{}) {
@@ -105,7 +108,7 @@ func NewController(
 					if err != nil {
 						glog.Errorf("Add failed: %v", err)
 					}
-					updateRelatedResources(kubeClient, oc, svc)
+					updateRelatedResources(kubeClient, oc, svc, config)
 				} else {
 					oldSvc := oldObj.(*api.Service)
 					if oldSvc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value {
@@ -113,7 +116,7 @@ func NewController(
 						if err != nil {
 							glog.Errorf("Remove failed: %v", err)
 						}
-						updateRelatedResources(kubeClient, oc, svc)
+						updateRelatedResources(kubeClient, oc, svc, config)
 					}
 				}
 			},
@@ -158,22 +161,54 @@ func isOpenShift(c *client.Client) bool {
 	return false
 }
 
-func updateRelatedResources(c *client.Client, oc *oclient.Client, svc *api.Service) {
-	updateServiceConfigMap(c, svc)
+func updateRelatedResources(c *client.Client, oc *oclient.Client, svc *api.Service, config *Config) {
+	updateServiceConfigMap(c, svc, config)
+
 	if oc != nil {
 		updateServiceOAuthClient(oc, svc)
 	}
 }
 
-
-func updateServiceConfigMap(c *client.Client, svc *api.Service) {
+func updateServiceConfigMap(c *client.Client, svc *api.Service, config *Config) {
 	name := svc.Name
 	ns := svc.Namespace
-	exposeURL := svc.Annotations[exposestrategy.ExposeAnnotationKey]
-	if len(exposeURL) > 0 {
-		host := ""
-		cm, err := c.ConfigMaps(ns).Get(name)
-		if err == nil {
+	cm, err := c.ConfigMaps(ns).Get(name)
+	if err == nil {
+		updated := false
+		apiserver := config.ApiServer
+		if len(apiserver) > 0 {
+			apiServerKey := cm.Annotations[ExposeConfigApiServerKeyAnnotation]
+			if len(apiServerKey) > 0 {
+				if cm.Data[apiServerKey] != apiserver {
+					cm.Data[apiServerKey] = apiserver
+					updated = true
+				}
+			}
+
+			authorizeURL := apiserver
+			if (!strings.HasPrefix(authorizeURL, "http:") && !strings.HasPrefix(authorizeURL, "https:")) {
+				authorizeURL = "https://" + authorizeURL
+			}
+			authPath := config.AuthorizePath
+			if len(authPath) == 0 {
+				authPath = "/oauth/authorize"
+			}
+			authorizeURL = path.Join(authorizeURL, authPath)
+
+			authorizeURLKey := cm.Annotations[ExposeConfigOAuthAuthorizeURLKeyAnnotation]
+			if len(authorizeURLKey) > 0 {
+				if cm.Data[authorizeURLKey] != authorizeURL {
+					cm.Data[authorizeURLKey] = authorizeURL
+					updated = true
+				}
+			}
+		} else {
+			glog.Warning("No apiserver found!")
+		}
+
+		exposeURL := svc.Annotations[exposestrategy.ExposeAnnotationKey]
+		if len(exposeURL) > 0 {
+			host := ""
 			url, err := url.Parse(exposeURL)
 			if err != nil {
 				glog.Errorf("Failed to parse expose URL %s for service %s  error: %v", exposeURL, name, err)
@@ -181,9 +216,8 @@ func updateServiceConfigMap(c *client.Client, svc *api.Service) {
 			} else {
 				host = url.Host
 			}
-			updated := false
-			urlKey := cm.Annotations[ExposeURLKeyAnnotation]
-			domainKey := cm.Annotations[ExposeURLHostKeyAnnotation]
+			urlKey := cm.Annotations[ExposeConfigURLKeyAnnotation]
+			domainKey := cm.Annotations[ExposeConfigHostKeyAnnotation]
 			if len(urlKey) > 0 {
 				if cm.Data[urlKey] != exposeURL {
 					cm.Data[urlKey] = exposeURL
@@ -196,12 +230,12 @@ func updateServiceConfigMap(c *client.Client, svc *api.Service) {
 					updated = true
 				}
 			}
-			if updated {
-				glog.Infof("Updating ConfigMap %s/%s", ns, name)
-				_, err = c.ConfigMaps(ns).Update(cm)
-				if err != nil {
-					glog.Errorf("Failed to update ConfigMap %s error: %v", name, err)
-				}
+		}
+		if updated {
+			glog.Infof("Updating ConfigMap %s/%s", ns, name)
+			_, err = c.ConfigMaps(ns).Update(cm)
+			if err != nil {
+				glog.Errorf("Failed to update ConfigMap %s error: %v", name, err)
 			}
 		}
 	}
