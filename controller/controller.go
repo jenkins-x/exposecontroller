@@ -137,7 +137,6 @@ func NewController(
 						if err != nil {
 							glog.Errorf("Remove failed: %v", err)
 						}
-						updateRelatedResources(kubeClient, oc, svc, config, authorizeURL)
 					}
 				}
 			},
