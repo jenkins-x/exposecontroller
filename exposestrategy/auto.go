@@ -17,7 +17,7 @@ const (
 	loadBalancer       = "loadbalancer"
 	nodePort           = "nodeport"
 	route              = "route"
-	domainExt          = ".xip.io"
+	domainExt          = ".nip.io"
 	stackpointNS       = "stackpoint-system"
 	stackpointHAProxy  = "spc-balancer"
 	stackpointIPEnvVar = "BALANCER_IP"
@@ -111,7 +111,7 @@ func getAutoDefaultDomain(c *client.Client) (string, error) {
 			}
 		}
 	}
-	return "", errors.New("no known automatic ways to get an external ip to use with xip")
+	return "", errors.New("no known automatic ways to get an external ip to use with nip.  Please configure exposecontroller configmap manually see https://github.com/fabric8io/exposecontroller#configuration")
 }
 
 // copied from k8s.io/kubernetes/pkg/master/master.go

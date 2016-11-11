@@ -26,7 +26,7 @@ kubectl get svc foo -o=yaml
 ## Configuration
 
 We use a Kubernetes ConfigMap and two main config entries
-  - `domain` when using either Kubernetes Ingress or OpenShift Routes you will need to set the domain that you've used with your DNS provider (fabric8 uses [cloudflare](https://www.cloudflare.com)) or xip.io if you want a quick way to get running.
+  - `domain` when using either Kubernetes Ingress or OpenShift Routes you will need to set the domain that you've used with your DNS provider (fabric8 uses [cloudflare](https://www.cloudflare.com)) or nip.io if you want a quick way to get running.
   - `exposer` used to describe which strategy exposecontroller should use to access applications
 
 ### Automatic
@@ -34,7 +34,7 @@ We use a Kubernetes ConfigMap and two main config entries
 If no config map or data values provided exposecontroller will try and work out what `exposer` or `domain` config for the playform.  
 
 * exposer - Minishift anf Minikube will default to `NodePort`, we  use `Ingress` for Kubernetes or `Route` OpenShift.
-* domain - using [xip.io](http://xip.io/) for magic wildcard DNS, exposecontroller will try and find a https://stackpoint.io HAProxy or Nginx Ingress controller.  We also default to the single VM IP if using minishift or minikube.  Together these create an external hostname we can use to access our applications.
+* domain - using [nip.io](http://nip.io/) for magic wildcard DNS, exposecontroller will try and find a https://stackpoint.io HAProxy or Nginx Ingress controller.  We also default to the single VM IP if using minishift or minikube.  Together these create an external hostname we can use to access our applications.
 
 
 ### types
