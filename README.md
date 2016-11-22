@@ -33,15 +33,15 @@ We use a Kubernetes ConfigMap and two main config entries
 
 If no config map or data values provided exposecontroller will try and work out what `exposer` or `domain` config for the playform.  
 
-* exposer - Minishift anf Minikube will default to `NodePort`, we  use `Ingress` for Kubernetes or `Route` OpenShift.
+* exposer - Minishift anf Minikube will default to `NodePort`, we  use `Ingress` for Kubernetes or `Route` for OpenShift.
 * domain - using [nip.io](http://nip.io/) for magic wildcard DNS, exposecontroller will try and find a https://stackpoint.io HAProxy or Nginx Ingress controller.  We also default to the single VM IP if using minishift or minikube.  Together these create an external hostname we can use to access our applications.
 
 
-### types
-- `Ingress` - Kubernetes Ingress [see](http://kubernetes.io/docs/user-guide/ingress/)
-- `LoadBalancer` - Cloud provider external loadbalancer [see](http://kubernetes.io/docs/user-guide/load-balancer/)
-- `NodePort` - Recomended for local development using minikube / minishift without Ingress or Router running [see](http://kubernetes.io/docs/user-guide/services/#type-nodeport)
-- `Route` - OpenShift Route [see](https://docs.openshift.com/enterprise/3.2/dev_guide/routes.html)
+### Exposer types
+- `Ingress` - [Kubernetes Ingress](http://kubernetes.io/docs/user-guide/ingress/)
+- `LoadBalancer` - Cloud provider external [load-balancer](http://kubernetes.io/docs/user-guide/load-balancer/)
+- `NodePort` - Recomended for local development using minikube / minishift without Ingress or Router running. See also the [Kubernetes NodePort](http://kubernetes.io/docs/user-guide/services/#type-nodeport) documentation.
+- `Route` - OpenShift [Route](https://docs.openshift.com/enterprise/3.2/dev_guide/routes.html)
 
 ```yaml
 cat <<EOF | kubectl create -f -
@@ -69,7 +69,7 @@ If you're using OpenShift then you'll need to add a couple roles:
 
 ## Label
 
-Now label your service with `expose=true` in [CD Pipelines](https://blog.fabric8.io/create-and-explore-continuous-delivery-pipelines-with-fabric8-and-jenkins-on-openshift-661aa82cb45a#.lx020ys70) or with CLI...
+Now label your service with `expose=true` in [CD Pipelines](https://blog.fabric8.io/create-and-explore-continuous-delivery-pipelines-with-fabric8-and-jenkins-on-openshift-661aa82cb45a#.lx020ys70) or with the CLI:
 
 ```
 kubectl label svc foo expose=true
@@ -79,23 +79,26 @@ __exposecontroller__ will use your `exposer` type in the configmap above to auto
 
 ## Using the expose URL in other resources
 
-Having an external URL is extremely useful. Here are some other uses of the expose URL in addition to the annotation that gets applied to the Service
+Having an external URL is extremely useful. Here are some other uses of the expose URL in addition to the annotation that gets applied to the `Service`
 
 ### ConfigMap
 
 Sometimes web applications need to know their external URL so that they can use that link or host/port when generating documentation or links.
 
-For example the [gogs application](https://github.com/fabric8io/fabric8-devops/tree/master/gogs) needs to know its external URL so that it can show the user how to do a git clone from the command line.
+For example the [Gogs application](https://github.com/fabric8io/fabric8-devops/tree/master/gogs) needs to know its external URL so that it can show the user how to do a git clone from the command line.
 
 If you wish to enable injection of the expose URL into a `ConfigMap` then 
 
 * create a `ConfigMap` with the same name as the `Service` and in the same namespace
-* add the annotation `expose.config.fabric8.io/url-key` for the key in the `ConfigMap.Data` you wish to store the expose URL
-* add the annotation `expose.config.fabric8.io/host-key` for the key in the `ConfigMap.Data` you wish to store the `host` or `host:port` of the URL
-* add the annotation `expose.config.fabric8.io/apiserver-key` for the key in the `ConfigMap.Data` you wish to store the apiserver host and port
-* add the annotation `expose.config.fabric8.io/oauth-authorize-url-key` for the key in the `ConfigMap.Data` you wish to store the OAuth Authorize URL
+* Add the following annotations to this `ConfigMap` for inserting automatically values into this map when the service gets exposed. The values of these annotations are used as keys in this config map.
+  - `expose.config.fabric8.io/url-key` : Exposed URL
+  - `expose.config.fabric8.io/host-key` : host or host + port when port is not equal 80 (e.g. `host:port`) 
+  - `expose.config.fabric8.io/apiserver-key` : Kubernetes / OpenShift API server host and port (format `host:port`)
+  - `expose.config.fabric8.io/oauth-authorize-url-key` : OAuth Authorization URL
 
-There is an [example of the use of these annotations in the gogs ConfigMap](https://github.com/fabric8io/fabric8-devops/blob/master/gogs/src/main/fabric8/gogs-cm.yml#L27)
+E.g. when you set an annotation on the config map `expose.config.fabric8.io/url-key: service.url` then an entry to this config map will be added with the key `service.url` and the value of the exposed service URL when a service of the same name as this configmap gets exposed. 
+
+There is an [example](https://github.com/fabric8io/fabric8-devops/blob/master/gogs/src/main/fabric8/gogs-cm.yml#L27) of the use of these annotations in the Gogs `ConfigMap`
 
 ### OAuthClient
 
