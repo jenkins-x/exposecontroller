@@ -62,22 +62,23 @@ out/exposecontroller-linux-amd64: gopath $(shell $(GOFILES)) version/VERSION
 out/exposecontroller-windows-amd64.exe: gopath $(shell $(GOFILES)) version/VERSION
 	CGO_ENABLED=0 GOARCH=amd64 GOOS=windows go build $(BUILDFLAGS) -o $(BUILD_DIR)/exposecontroller-windows-amd64.exe $(ROOT_PACKAGE)
 
+out/exposecontroller-linux-arm: gopath $(shell $(GOFILES)) version/VERSION
+	CGO_ENABLED=0 GOARCH=arm GOOS=linux go build $(BUILDFLAGS) -o $(BUILD_DIR)/exposecontroller-linux-arm $(ROOT_PACKAGE)
+	
 .PHONY: test
 test: gopath
 	go test -v $(GOPACKAGES)
 
-$(GOPATH)/bin/gh-release: gopath
-	go get github.com/progrium/gh-release
-
 .PHONY: release
-release: clean test $(GOPATH)/bin/gh-release cross
+release: clean test cross
 	mkdir -p release
 	cp out/exposecontroller-*-amd64* release
+	cp out/exposecontroller-*-arm* release
 	gh-release checksums sha256
 	gh-release create fabric8io/exposecontroller $(VERSION) master v$(VERSION)
 
 .PHONY: cross
-cross: out/exposecontroller-linux-amd64 out/exposecontroller-darwin-amd64 out/exposecontroller-windows-amd64.exe
+cross: out/exposecontroller-linux-amd64 out/exposecontroller-darwin-amd64 out/exposecontroller-windows-amd64.exe out/exposecontroller-linux-arm
 
 .PHONY: gopath
 gopath: $(GOPATH)/src/$(ORG)
