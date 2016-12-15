@@ -90,7 +90,6 @@ $(GOPATH)/src/$(ORG):
 
 .PHONY: clean
 clean:
-	rm -rf $(GOPATH)
 	rm -rf $(BUILD_DIR)
 	rm -rf release
 
