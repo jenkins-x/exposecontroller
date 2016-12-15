@@ -119,7 +119,7 @@ func (s *NodePortStrategy) Add(svc *api.Service) error {
 			Name(svc.Name).
 			Body(patch).Do().Error()
 		if err != nil {
-			return errors.Wrap(err, "failed to send patch")
+			return errors.Wrap(err, fmt.Sprintf("failed to send patch for %s/%s patch %s", svc.Namespace, svc.Name, string(patch)))
 		}
 	}
 
