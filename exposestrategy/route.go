@@ -3,7 +3,6 @@ package exposestrategy
 import (
 	"reflect"
 
-	"github.com/golang/glog"
 	"github.com/pkg/errors"
 
 	oclient "github.com/openshift/origin/pkg/client"
