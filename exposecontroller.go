@@ -12,7 +12,6 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
-	"k8s.io/kubernetes/pkg/api"
 	kubectlutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 
 	"github.com/fabric8io/exposecontroller/controller"
@@ -61,7 +60,25 @@ func main() {
 		glog.Fatalf("%s", err)
 	}
 
-	c, err := controller.NewController(kubeClient, restClientConfig, factory.JSONEncoder(), *resyncPeriod, api.NamespaceAll, controllerConfig)
+
+	//watchNamespaces := api.NamespaceAll
+	watchNamespaces := controllerConfig.WatchNamespaces
+	if controllerConfig.WatchCurrentNamespace {
+		currentNamespace := os.Getenv("KUBERNETES_NAMESPACE")
+		if len(currentNamespace) == 0 {
+			currentNamespace, _, err = factory.DefaultNamespace()
+			if err != nil {
+				glog.Fatalf("Could not find the current namespace: %v", err)
+			}
+		}
+		if len(currentNamespace) == 0 {
+			glog.Fatalf("No current namespace found!")
+		}
+		watchNamespaces = currentNamespace
+	}
+	glog.Infof("Watching services in namespaces: `%s`", watchNamespaces)
+
+	c, err := controller.NewController(kubeClient, restClientConfig, factory.JSONEncoder(), *resyncPeriod, watchNamespaces, controllerConfig)
 	if err != nil {
 		glog.Fatalf("%s", err)
 	}
