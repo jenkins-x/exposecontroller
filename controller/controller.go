@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -32,6 +33,8 @@ const (
 	ExposeConfigHostKeyAnnotation = "expose.config.fabric8.io/host-key"
 	ExposeConfigApiServerKeyAnnotation = "expose.config.fabric8.io/apiserver-key"
 	ExposeConfigOAuthAuthorizeURLKeyAnnotation = "expose.config.fabric8.io/oauth-authorize-url-key"
+
+	OAuthAuthorizeUrlEnvVar = "OAUTH_AUTHORIZE_URL"
 )
 
 type Controller struct {
@@ -86,6 +89,9 @@ func NewController(
 
 		authorizeURL = findOAuthAuthorizeURL()
 		if len(authorizeURL) == 0 {
+			authorizeURL = os.Getenv(OAuthAuthorizeUrlEnvVar)
+		}
+		if len(authorizeURL) == 0 {
 			authorizeURL = config.ApiServer
 			if len(authorizeURL) == 0 {
 				authorizeURL = findApiServerFromNode(kubeClient)
@@ -105,6 +111,9 @@ func NewController(
 			}
 		}
 		glog.Infof("Using OAuth Authorize URL: %s", authorizeURL)
+		if len(authorizeURL) == 0 {
+			glog.Warningf("Please use $%s to define the OAuth Authorize URL!", OAuthAuthorizeUrlEnvVar)
+		}
 	}
 
 	c.svcLister.Store, c.svcController = framework.NewInformer(
@@ -165,26 +174,30 @@ func NewController(
 // findApiServerFromNode lets try default the API server URL by detecting minishift/minikube for single node clusters
 func findApiServerFromNode(c *client.Client) string {
 	nodes, err := c.Nodes().List(api.ListOptions{})
-	if err == nil {
-		items := nodes.Items
-		if len(items) == 1 {
-			node := items[0]
-			port := "8443"
-			ann := node.Annotations
-			host := ""
-			if ann != nil {
-				host = ann["kubernetes.io/hostname"]
-			}
-			if len(host) == 0 {
-				host = node.Spec.ExternalID
-			}
-			if len(host) == 0 {
-				host = node.Name
-			}
-			if len(host) > 0 {
-				return host + ":" + port
-			}
-		}
+	if err != nil {
+		glog.Errorf("Failed to list nodes to detect minishift: %v", err)
+		return ""
+	}
+	items := nodes.Items
+	if len(items) != 1 {
+		glog.Errorf("Number of nodes is %d. We need 1 to detect minishift. Please use  to list nodes to detect minishift: %v", err)
+		return ""
+	}
+	node := items[0]
+	port := "8443"
+	ann := node.Annotations
+	host := ""
+	if ann != nil {
+		host = ann["kubernetes.io/hostname"]
+	}
+	if len(host) == 0 {
+		host = node.Spec.ExternalID
+	}
+	if len(host) == 0 {
+		host = node.Name
+	}
+	if len(host) > 0 {
+		return host + ":" + port
 	}
 	return ""
 
