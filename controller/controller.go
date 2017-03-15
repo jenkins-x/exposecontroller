@@ -87,6 +87,9 @@ func NewController(
 		authorizeURL = findOAuthAuthorizeURL()
 		if len(authorizeURL) == 0 {
 			authorizeURL = config.ApiServer
+			if len(authorizeURL) == 0 {
+				authorizeURL = findApiServerFromNode(kubeClient)
+			}
 			if len(authorizeURL) > 0 {
 				if (!strings.HasPrefix(authorizeURL, "http:") && !strings.HasPrefix(authorizeURL, "https:")) {
 					authorizeURL = "https://" + authorizeURL
@@ -157,6 +160,34 @@ func NewController(
 	)
 
 	return &c, nil
+}
+
+// findApiServerFromNode lets try default the API server URL by detecting minishift/minikube for single node clusters
+func findApiServerFromNode(c *client.Client) string {
+	nodes, err := c.Nodes().List(api.ListOptions{})
+	if err == nil {
+		items := nodes.Items
+		if len(items) == 1 {
+			node := items[0]
+			port := "8443"
+			ann := node.Annotations
+			host := ""
+			if ann != nil {
+				host = ann["kubernetes.io/hostname"]
+			}
+			if len(host) == 0 {
+				host = node.Spec.ExternalID
+			}
+			if len(host) == 0 {
+				host = node.Name
+			}
+			if len(host) > 0 {
+				return host + ":" + port
+			}
+		}
+	}
+	return ""
+
 }
 
 
