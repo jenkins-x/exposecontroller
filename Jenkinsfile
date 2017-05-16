@@ -18,7 +18,10 @@ goNode{
 def updateDownstreamDependencies(v) {
   pushPomPropertyChangePR {
     propertyName = 'exposecontroller.version'
-    projects = ['fabric8io/fabric8-devops']
+    projects = [
+            'fabric8io/fabric8-devops',
+            'fabric8io/fabric8-platform'
+    ]
     version = v
   }
 }
