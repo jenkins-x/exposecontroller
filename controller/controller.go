@@ -33,6 +33,8 @@ const (
 	ExposeConfigURLKeyAnnotation = "expose.config.fabric8.io/url-key"
 	ExposeConfigHostKeyAnnotation = "expose.config.fabric8.io/host-key"
 	ExposeConfigApiServerKeyAnnotation = "expose.config.fabric8.io/apiserver-key"
+	ExposeConfigApiServerURLKeyAnnotation = "expose.config.fabric8.io/apiserver-url-key"
+	ExposeConfigApiServerProtocolKeyAnnotation = "expose.config.fabric8.io/apiserver-protocol-key"
 	ExposeConfigOAuthAuthorizeURLKeyAnnotation = "expose.config.fabric8.io/oauth-authorize-url-key"
 
 	OAuthAuthorizeUrlEnvVar = "OAUTH_AUTHORIZE_URL"
@@ -96,6 +98,7 @@ func NewController(
 			authorizeURL = config.ApiServer
 			if len(authorizeURL) == 0 {
 				authorizeURL = findApiServerFromNode(kubeClient)
+				config.ApiServer = authorizeURL
 			}
 			if len(authorizeURL) > 0 {
 				if (!strings.HasPrefix(authorizeURL, "http:") && !strings.HasPrefix(authorizeURL, "https:")) {
@@ -238,6 +241,27 @@ func updateRelatedResources(c *client.Client, oc *oclient.Client, svc *api.Servi
 	}
 }
 
+func kubernetesServiceProtocol(c *client.Client) string {
+	hasHttp := false;
+	svc, err := c.Services("default").Get("kubernetes")
+	if err != nil {
+		glog.Warningf("Could not find kubernetes service in the default namespace %v", err)
+	} else {
+		for _, port := range svc.Spec.Ports {
+			if port.Name == "https" || port.Port == 443 {
+				return "https";
+			}
+			if port.Name == "http" || port.Port == 80 {
+				hasHttp = true
+			}
+		}
+	}
+	if hasHttp {
+		return "http"
+	}
+	return "https"
+}
+
 
 func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Service, config *Config, authorizeURL string) {
 	name := svc.Name
@@ -246,6 +270,7 @@ func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Servi
 	if err == nil {
 		updated := false
 		apiserver := config.ApiServer
+		apiserverProtocol := kubernetesServiceProtocol(c)
 
 		if len(apiserver) > 0 {
 			apiServerKey := cm.Annotations[ExposeConfigApiServerKeyAnnotation]
@@ -254,6 +279,21 @@ func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Servi
 					cm.Data[apiServerKey] = apiserver
 					updated = true
 				}
+			}
+			apiServerURLKey := cm.Annotations[ExposeConfigApiServerURLKeyAnnotation]
+			if len(apiServerURLKey) > 0 {
+				apiserverURL := apiserverProtocol + "://" + apiserver
+				if cm.Data[apiServerURLKey] != apiserverURL {
+					cm.Data[apiServerURLKey] = apiserverURL
+					updated = true
+				}
+			}
+		}
+		apiserverProtocolKey := cm.Annotations[ExposeConfigApiServerProtocolKeyAnnotation]
+		if len(apiserverProtocolKey) > 0 {
+			if cm.Data[apiserverProtocolKey] != apiserverProtocol {
+				cm.Data[apiserverProtocolKey] = apiserverProtocol
+				updated = true
 			}
 		}
 		if len(authorizeURL) > 0 && oc != nil {
