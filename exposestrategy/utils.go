@@ -4,14 +4,16 @@ import (
 	"bytes"
 	"encoding/json"
 	"net"
+	"strings"
 
 	"github.com/pkg/errors"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/strategicpatch"
+
+	client "k8s.io/kubernetes/pkg/client/unversioned"
 )
 
 func addServiceAnnotation(svc *api.Service, hostName string) (*api.Service, error) {
@@ -36,9 +38,19 @@ func addServiceAnnotation(svc *api.Service, hostName string) (*api.Service, erro
 	if svc.Annotations == nil {
 		svc.Annotations = map[string]string{}
 	}
+	path := svc.Annotations[ApiServicePathAnnotationKey]
+	if len(path) > 0 {
+		exposeURL = urlJoin(exposeURL, path)
+	}
 	svc.Annotations[ExposeAnnotationKey] = exposeURL
 
 	return svc, nil
+}
+
+
+// urlJoin joins the given URL paths so that there is a / separating them but not a double //
+func urlJoin(repo string, path string) string {
+	return strings.TrimSuffix(repo, "/") + "/" + strings.TrimPrefix(path, "/")
 }
 
 func removeServiceAnnotation(svc *api.Service) *api.Service {
