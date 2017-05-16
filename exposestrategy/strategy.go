@@ -25,6 +25,7 @@ type Label struct {
 var (
 	ExposeLabel         = Label{Key: "expose", Value: "true"}
 	ExposeAnnotationKey = "fabric8.io/exposeUrl"
+	ApiServicePathAnnotationKey = "api.service.kubernetes.io/path"
 )
 
 func New(exposer, domain string, client *client.Client, restClientConfig *restclient.Config, encoder runtime.Encoder) (ExposeStrategy, error) {
