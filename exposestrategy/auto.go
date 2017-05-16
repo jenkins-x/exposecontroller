@@ -32,8 +32,7 @@ func NewAutoStrategy(exposer, domain string, client *client.Client, restClientCo
 	glog.Infof("Using exposer strategy: %s", exposer)
 
 	// only try to get domain if we need wildcard dns and one wasn't given to us
-	if len(domain) == 0 && (strings.EqualFold(ingress, exposer) || strings.EqualFold(route, exposer)) {
-
+	if len(domain) == 0 && (strings.EqualFold(ingress, exposer)) {
 		domain, err = getAutoDefaultDomain(client)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to get a domain")

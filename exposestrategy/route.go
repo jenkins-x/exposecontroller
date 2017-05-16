@@ -5,14 +5,15 @@ import (
 
 	"github.com/pkg/errors"
 
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/v1"
+	"k8s.io/kubernetes/pkg/runtime"
+
+	apierrors "k8s.io/kubernetes/pkg/api/errors"
+	client "k8s.io/kubernetes/pkg/client/unversioned"
 	oclient "github.com/openshift/origin/pkg/client"
 	rapi "github.com/openshift/origin/pkg/route/api"
 	rapiv1 "github.com/openshift/origin/pkg/route/api/v1"
-	"k8s.io/kubernetes/pkg/api"
-	apierrors "k8s.io/kubernetes/pkg/api/errors"
-	"k8s.io/kubernetes/pkg/api/v1"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
-	"k8s.io/kubernetes/pkg/runtime"
 )
 
 type RouteStrategy struct {
@@ -74,22 +75,21 @@ func (s *RouteStrategy) Add(svc *api.Service) error {
 				},
 			}
 		} else {
-			return errors.Wrapf(err, "could not check for existing ingress %s/%s", svc.Namespace, svc.Name)
+			return errors.Wrapf(err, "could not check for existing route %s/%s", svc.Namespace, svc.Name)
 		}
 	}
-
+	
 	if route.Labels == nil {
 		route.Labels = map[string]string{}
-	}
-	route.Labels["provider"] = "fabric8"
-
-	route.Spec = rapi.RouteSpec{
-		//Host: hostName,
-		To:   rapi.RouteTargetReference{Name: svc.Name},
 	}
 
 	var hostName string
 	if createRoute {
+		route.Labels["provider"] = "fabric8"
+		route.Spec = rapi.RouteSpec{
+			To:   rapi.RouteTargetReference{Name: svc.Name},
+		}
+
 		route.Labels["generator"] = "exposecontroller"
 		updated, err := s.oclient.Routes(route.Namespace).Create(route)
 		if err != nil {
@@ -97,7 +97,7 @@ func (s *RouteStrategy) Add(svc *api.Service) error {
 		}
 		hostName = updated.Spec.Host
 	} else {
-		// lets only update the route if the route that exists was not
+		// lets only update the route if the route that exists was not created by exposecontroller
 		generator := route.Labels["generator"]
 		if generator == "exposecontroller" {
 			updated, err := s.oclient.Routes(route.Namespace).Update(route)
@@ -141,7 +141,6 @@ func (s *RouteStrategy) Add(svc *api.Service) error {
 			return errors.Wrap(err, "failed to send patch")
 		}
 	}
-
 	return nil
 }
 
