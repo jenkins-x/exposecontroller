@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"net/http"
 	"os"
@@ -227,11 +228,16 @@ func isOpenShift(c *client.Client) bool {
 
 func updateRelatedResources(c *client.Client, oc *oclient.Client, svc *api.Service, config *Config, authorizeURL string) {
 	updateServiceConfigMap(c, oc, svc, config, authorizeURL)
-
 	if oc != nil {
 		updateServiceOAuthClient(oc, svc)
 	}
+
+	exposeURL := svc.Annotations[exposestrategy.ExposeAnnotationKey]
+	if len(exposeURL) > 0 {
+		updateOtherConfigMaps(c, oc, svc,config, exposeURL)
+	}
 }
+
 
 func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Service, config *Config, authorizeURL string) {
 	name := svc.Name
@@ -294,6 +300,37 @@ func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Servi
 		}
 	}
 }
+
+// updateOtherConfigMaps lets update all other configmaps which want to be injected by this svc exposeURL
+func updateOtherConfigMaps(c *client.Client, oc *oclient.Client, svc *api.Service, config *Config, exposeURL string) error {
+	serviceName := svc.Name
+	annotationKey := "expose.service-key.config.fabric8.io/" + serviceName
+	ns := svc.Namespace
+	cms, err := c.ConfigMaps(ns).List(api.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, cm := range cms.Items {
+		updateKey := cm.Annotations[annotationKey]
+		if len(updateKey) > 0 {
+			value := cm.Data[updateKey]
+			if (value != exposeURL) {
+				if cm.Data == nil {
+					cm.Data = map[string]string{}
+				}
+				cm.Data[updateKey] = exposeURL;
+				glog.Infof("Updating ConfigMap %s in namespace %s with key %s", cm.Name, ns, updateKey)
+				_, err = c.ConfigMaps(ns).Update(&cm)
+				if err != nil {
+					return fmt.Errorf("Failed to update ConfigMap %s in namespace %s with key %s due to %v", cm.Name, ns, updateKey, err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+
 
 // findOAuthAuthorizeURL uses this endpoint: https://github.com/openshift/origin/pull/10845
 func findOAuthAuthorizeURL() string {
