@@ -119,6 +119,9 @@ func NewController(
 			glog.Warningf("Please use $%s to define the OAuth Authorize URL!", OAuthAuthorizeUrlEnvVar)
 		}
 	}
+	if len(config.ApiServerProtocol) == 0 {
+		config.ApiServerProtocol = kubernetesServiceProtocol(kubeClient)
+	}
 
 	c.svcLister.Store, c.svcController = framework.NewInformer(
 		&cache.ListWatch{
@@ -245,7 +248,7 @@ func kubernetesServiceProtocol(c *client.Client) string {
 	hasHttp := false;
 	svc, err := c.Services("default").Get("kubernetes")
 	if err != nil {
-		glog.Warningf("Could not find kubernetes service in the default namespace %v", err)
+		glog.Warningf("Could not find kubernetes service in the default namespace so we could not detect whether to use http or https as the apiserver protocol. Error: %v", err)
 	} else {
 		for _, port := range svc.Spec.Ports {
 			if port.Name == "https" || port.Port == 443 {
@@ -270,7 +273,7 @@ func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Servi
 	if err == nil {
 		updated := false
 		apiserver := config.ApiServer
-		apiserverProtocol := kubernetesServiceProtocol(c)
+		apiserverProtocol := config.ApiServerProtocol
 
 		if len(apiserver) > 0 {
 			apiServerKey := cm.Annotations[ExposeConfigApiServerKeyAnnotation]
