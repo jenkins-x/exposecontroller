@@ -2,8 +2,9 @@
 domain: 
 exposer:
 watch-current-namespace: true
+exposer: Route
 
 #exposer: Ingress
 #exposer: LoadBalancer
-#exposer: Route
+#
 #exposer: NodePort
