@@ -101,9 +101,12 @@ func (s *NodePortStrategy) Add(svc *api.Service) error {
 	}
 
 	port := svc.Spec.Ports[0]
-	nodePort := strconv.Itoa(int(port.NodePort))
+	portInt := int(port.NodePort)
+	nodePort := strconv.Itoa(portInt)
 	hostName := net.JoinHostPort(s.nodeIP, nodePort)
-	clone, err = addServiceAnnotation(clone, hostName)
+	if portInt > 0 {
+		clone, err = addServiceAnnotation(clone, hostName)
+	}
 	clone.Spec.ExternalIPs = nil
 	if err != nil {
 		return errors.Wrap(err, "failed to add service annotation")
