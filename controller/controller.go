@@ -348,25 +348,42 @@ func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Servi
 func updateOtherConfigMaps(c *client.Client, oc *oclient.Client, svc *api.Service, config *Config, exposeURL string) error {
 	serviceName := svc.Name
 	annotationKey := "expose.service-key.config.fabric8.io/" + serviceName
+	annotationFullKey := "expose-full.service-key.config.fabric8.io/" + serviceName
 	ns := svc.Namespace
 	cms, err := c.ConfigMaps(ns).List(api.ListOptions{})
 	if err != nil {
 		return err
 	}
 	for _, cm := range cms.Items {
+		update := false
 		updateKey := cm.Annotations[annotationKey]
+		if cm.Data == nil {
+			cm.Data = map[string]string{}
+		}
 		if len(updateKey) > 0 {
 			value := cm.Data[updateKey]
 			if (value != exposeURL) {
-				if cm.Data == nil {
-					cm.Data = map[string]string{}
-				}
 				cm.Data[updateKey] = exposeURL;
 				glog.Infof("Updating ConfigMap %s in namespace %s with key %s", cm.Name, ns, updateKey)
-				_, err = c.ConfigMaps(ns).Update(&cm)
-				if err != nil {
-					return fmt.Errorf("Failed to update ConfigMap %s in namespace %s with key %s due to %v", cm.Name, ns, updateKey, err)
-				}
+				update = true
+			}
+		}
+		updateKey = cm.Annotations[annotationFullKey]
+		if len(updateKey) > 0 {
+			if !strings.HasSuffix(exposeURL, "/") {
+				exposeURL += "/"
+			}
+			value := cm.Data[updateKey]
+			if (value != exposeURL) {
+				cm.Data[updateKey] = exposeURL;
+				glog.Infof("Updating ConfigMap %s in namespace %s with key %s", cm.Name, ns, updateKey)
+				update = true
+			}
+		}
+		if update {
+			_, err = c.ConfigMaps(ns).Update(&cm)
+			if err != nil {
+				return fmt.Errorf("Failed to update ConfigMap %s in namespace %s with key %s due to %v", cm.Name, ns, updateKey, err)
 			}
 		}
 	}
