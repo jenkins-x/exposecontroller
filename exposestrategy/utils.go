@@ -16,7 +16,8 @@ import (
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 )
 
-func addServiceAnnotation(svc *api.Service, hostName string) (*api.Service, error) {
+
+func findHttpProtocol(svc *api.Service, hostName string) (string) {
 	// default to http
 	protocol := "http"
 
@@ -25,15 +26,24 @@ func addServiceAnnotation(svc *api.Service, hostName string) (*api.Service, erro
 	if err == nil {
 		if port == "443" || port == "8443" {
 			protocol = "https"
-		} else {
-			// check if the service port has a name of https
-			for _, port := range svc.Spec.Ports {
-				if port.Name == "https" {
-					protocol = port.Name
-				}
-			}
 		}
 	}
+	// check if the service port has a name of https
+	for _, port := range svc.Spec.Ports {
+		if port.Name == "https" {
+			protocol = port.Name
+		}
+	}
+	return protocol
+}
+
+func addServiceAnnotation(svc *api.Service, hostName string) (*api.Service, error) {
+	protocol := findHttpProtocol(svc, hostName)
+	return addServiceAnnotationWithProtocol(svc, hostName, protocol)
+}
+
+
+func addServiceAnnotationWithProtocol(svc *api.Service, hostName string, protocol string) (*api.Service, error) {
 	exposeURL := protocol + "://" + hostName
 	if svc.Annotations == nil {
 		svc.Annotations = map[string]string{}
