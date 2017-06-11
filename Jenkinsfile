@@ -20,8 +20,8 @@ def updateDownstreamDependencies(v) {
     propertyName = 'exposecontroller.version'
     projects = [
             'fabric8io/fabric8-devops',
-            'fabric8io/fabric8-platform'
-            'funktionio/funktion-platform',
+            'fabric8io/fabric8-platform',
+            'funktionio/funktion-platform'
     ]
     version = v
   }
