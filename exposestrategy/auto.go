@@ -44,6 +44,13 @@ func NewAutoStrategy(exposer, domain string, client *client.Client, restClientCo
 }
 
 func getAutoDefaultExposeRule(c *client.Client) (string, error) {
+	t, err := typeOfMaster(c)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to get type of master")
+	}
+	if t == openShift {
+		return route, nil
+	}
 
 	nodes, err := c.Nodes().List(api.ListOptions{})
 	if err != nil {
@@ -54,14 +61,6 @@ func getAutoDefaultExposeRule(c *client.Client) (string, error) {
 		if node.Name == "minishift" || node.Name == "minikube" {
 			return nodePort, nil
 		}
-	}
-
-	t, err := typeOfMaster(c)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to get type of master")
-	}
-	if t == openShift {
-		return route, nil
 	}
 	return ingress, nil
 }
