@@ -3,14 +3,23 @@
 def dummy
 goNode{
   dockerNode{
-    def v = goRelease{
-      githubOrganisation = 'fabric8io'
-      dockerOrganisation = 'fabric8'
-      project = 'exposecontroller'
-    }
+    if (env.BRANCH_NAME.startsWith('PR-')) {
+      goCI{
+        githubOrganisation = 'fabric8io'
+        dockerOrganisation = 'fabric8'
+        project = 'exposecontroller'
+        makeTarget = 'clean test cross'
+      }
+    } else if (env.BRANCH_NAME.equals('master')) {
+      def v = goRelease{
+        githubOrganisation = 'fabric8io'
+        dockerOrganisation = 'fabric8'
+        project = 'exposecontroller'
+      }
 
-    stage ('Update downstream dependencies') {
-      updateDownstreamDependencies(v)
+      stage ('Update downstream dependencies') {
+        updateDownstreamDependencies(v)
+      }
     }
   }
 }
