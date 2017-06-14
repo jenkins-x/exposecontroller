@@ -3,8 +3,8 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -13,14 +13,14 @@ import (
 	"github.com/pkg/errors"
 
 	"k8s.io/kubernetes/pkg/api"
+	uapi "k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/record"
 	"k8s.io/kubernetes/pkg/client/restclient"
+	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/watch"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
-	uapi "k8s.io/kubernetes/pkg/api/unversioned"
 
 	"github.com/fabric8io/exposecontroller/exposestrategy"
 
@@ -30,10 +30,10 @@ import (
 )
 
 const (
-	ExposeConfigURLKeyAnnotation = "expose.config.fabric8.io/url-key"
-	ExposeConfigHostKeyAnnotation = "expose.config.fabric8.io/host-key"
-	ExposeConfigApiServerKeyAnnotation = "expose.config.fabric8.io/apiserver-key"
-	ExposeConfigApiServerURLKeyAnnotation = "expose.config.fabric8.io/apiserver-url-key"
+	ExposeConfigURLKeyAnnotation               = "expose.config.fabric8.io/url-key"
+	ExposeConfigHostKeyAnnotation              = "expose.config.fabric8.io/host-key"
+	ExposeConfigApiServerKeyAnnotation         = "expose.config.fabric8.io/apiserver-key"
+	ExposeConfigApiServerURLKeyAnnotation      = "expose.config.fabric8.io/apiserver-url-key"
 	ExposeConfigApiServerProtocolKeyAnnotation = "expose.config.fabric8.io/apiserver-protocol-key"
 	ExposeConfigOAuthAuthorizeURLKeyAnnotation = "expose.config.fabric8.io/oauth-authorize-url-key"
 
@@ -89,7 +89,6 @@ func NewController(
 		ocfg.NegotiatedSerializer = nil
 		oc, _ = oclient.New(&ocfg)
 
-
 		authorizeURL = findOAuthAuthorizeURL()
 		if len(authorizeURL) == 0 {
 			authorizeURL = os.Getenv(OAuthAuthorizeUrlEnvVar)
@@ -101,17 +100,17 @@ func NewController(
 				config.ApiServer = authorizeURL
 			}
 			if len(authorizeURL) > 0 {
-				if (!strings.HasPrefix(authorizeURL, "http:") && !strings.HasPrefix(authorizeURL, "https:")) {
+				if !strings.HasPrefix(authorizeURL, "http:") && !strings.HasPrefix(authorizeURL, "https:") {
 					authorizeURL = "https://" + authorizeURL
 				}
 				authPath := config.AuthorizePath
 				if len(authPath) == 0 {
 					authPath = "/oauth/authorize"
 				}
-				if (!strings.HasPrefix(authPath, "/")) {
+				if !strings.HasPrefix(authPath, "/") {
 					authPath = "/" + authPath
 				}
-				authorizeURL = strings.TrimSuffix(authorizeURL, "/") + authPath;
+				authorizeURL = strings.TrimSuffix(authorizeURL, "/") + authPath
 			}
 		}
 		glog.Infof("Using OAuth Authorize URL: %s", authorizeURL)
@@ -210,7 +209,6 @@ func findApiServerFromNode(c *client.Client) string {
 
 }
 
-
 func isOpenShift(c *client.Client) bool {
 	res, err := c.Get().AbsPath("").DoRaw()
 	if err != nil {
@@ -240,19 +238,19 @@ func updateRelatedResources(c *client.Client, oc *oclient.Client, svc *api.Servi
 
 	exposeURL := svc.Annotations[exposestrategy.ExposeAnnotationKey]
 	if len(exposeURL) > 0 {
-		updateOtherConfigMaps(c, oc, svc,config, exposeURL)
+		updateOtherConfigMaps(c, oc, svc, config, exposeURL)
 	}
 }
 
 func kubernetesServiceProtocol(c *client.Client) string {
-	hasHttp := false;
+	hasHttp := false
 	svc, err := c.Services("default").Get("kubernetes")
 	if err != nil {
 		glog.Warningf("Could not find kubernetes service in the default namespace so we could not detect whether to use http or https as the apiserver protocol. Error: %v", err)
 	} else {
 		for _, port := range svc.Spec.Ports {
 			if port.Name == "https" || port.Port == 443 {
-				return "https";
+				return "https"
 			}
 			if port.Name == "http" || port.Port == 80 {
 				hasHttp = true
@@ -264,7 +262,6 @@ func kubernetesServiceProtocol(c *client.Client) string {
 	}
 	return "https"
 }
-
 
 func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Service, config *Config, authorizeURL string) {
 	name := svc.Name
@@ -361,9 +358,10 @@ func updateOtherConfigMaps(c *client.Client, oc *oclient.Client, svc *api.Servic
 			cm.Data = map[string]string{}
 		}
 		if len(updateKey) > 0 {
+			exposeURL = strings.TrimSuffix(exposeURL, "/")
 			value := cm.Data[updateKey]
-			if (value != exposeURL) {
-				cm.Data[updateKey] = exposeURL;
+			if value != exposeURL {
+				cm.Data[updateKey] = exposeURL
 				glog.Infof("Updating ConfigMap %s in namespace %s with key %s", cm.Name, ns, updateKey)
 				update = true
 			}
@@ -374,8 +372,8 @@ func updateOtherConfigMaps(c *client.Client, oc *oclient.Client, svc *api.Servic
 				exposeURL += "/"
 			}
 			value := cm.Data[updateKey]
-			if (value != exposeURL) {
-				cm.Data[updateKey] = exposeURL;
+			if value != exposeURL {
+				cm.Data[updateKey] = exposeURL
 				glog.Infof("Updating ConfigMap %s in namespace %s with key %s", cm.Name, ns, updateKey)
 				update = true
 			}
@@ -389,8 +387,6 @@ func updateOtherConfigMaps(c *client.Client, oc *oclient.Client, svc *api.Servic
 	}
 	return nil
 }
-
-
 
 // findOAuthAuthorizeURL uses this endpoint: https://github.com/openshift/origin/pull/10845
 func findOAuthAuthorizeURL() string {
@@ -414,9 +410,9 @@ func findOAuthAuthorizeURL() string {
 }
 
 type OAuthServer struct {
-	Issuer string 			 `json:"issuer,omitempty"`
-	AuthorizationEndpoint string     `json:"authorization_endpoint,omitempty"`
-	TokenEndpoint string             `json:"token_endpoint,omitempty"`
+	Issuer                string `json:"issuer,omitempty"`
+	AuthorizationEndpoint string `json:"authorization_endpoint,omitempty"`
+	TokenEndpoint         string `json:"token_endpoint,omitempty"`
 }
 
 func updateServiceOAuthClient(oc *oclient.Client, svc *api.Service) {
@@ -452,7 +448,6 @@ func updateServiceOAuthClient(oc *oclient.Client, svc *api.Service) {
 		}
 	}
 }
-
 
 // Run starts the controller.
 func (c *Controller) Run() {
