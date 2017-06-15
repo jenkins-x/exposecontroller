@@ -47,13 +47,14 @@ type Config struct {
 	Domain                string `yaml:"domain,omitempty"`
 	Exposer               string `yaml:"exposer"`
 	ApiServer             string `yaml:"apiserver,omitempty"`
+	ConsoleURL            string `yaml:"console-url,omitempty"`
 	AuthorizePath         string `yaml:"authorize-path,omitempty"`
 	ApiServerProtocol     string `yaml:"apiserver-protocol"`
 	WatchNamespaces       string `yaml:"watch-namespaces"`
-	WatchCurrentNamespace bool `yaml:"watch-current-namespace"`
+	WatchCurrentNamespace bool   `yaml:"watch-current-namespace"`
 
 	// original is the input from which the config was parsed.
-	original              string
+	original string
 }
 
 var (

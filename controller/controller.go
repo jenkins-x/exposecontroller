@@ -3,8 +3,8 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -13,14 +13,14 @@ import (
 	"github.com/pkg/errors"
 
 	"k8s.io/kubernetes/pkg/api"
-	uapi "k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/record"
 	"k8s.io/kubernetes/pkg/client/restclient"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/watch"
+	client "k8s.io/kubernetes/pkg/client/unversioned"
+	uapi "k8s.io/kubernetes/pkg/api/unversioned"
 
 	"github.com/fabric8io/exposecontroller/exposestrategy"
 
@@ -34,6 +34,7 @@ const (
 	ExposeConfigHostKeyAnnotation              = "expose.config.fabric8.io/host-key"
 	ExposeConfigApiServerKeyAnnotation         = "expose.config.fabric8.io/apiserver-key"
 	ExposeConfigApiServerURLKeyAnnotation      = "expose.config.fabric8.io/apiserver-url-key"
+	ExposeConfigConsoleURLKeyAnnotation        = "expose.config.fabric8.io/console-url-key"
 	ExposeConfigApiServerProtocolKeyAnnotation = "expose.config.fabric8.io/apiserver-protocol-key"
 	ExposeConfigOAuthAuthorizeURLKeyAnnotation = "expose.config.fabric8.io/oauth-authorize-url-key"
 
@@ -271,8 +272,10 @@ func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Servi
 		updated := false
 		apiserver := config.ApiServer
 		apiserverProtocol := config.ApiServerProtocol
+		consoleURL := config.ConsoleURL
 
 		if len(apiserver) > 0 {
+			apiserverURL := apiserverProtocol + "://" + apiserver
 			apiServerKey := cm.Annotations[ExposeConfigApiServerKeyAnnotation]
 			if len(apiServerKey) > 0 {
 				if cm.Data[apiServerKey] != apiserver {
@@ -282,9 +285,22 @@ func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Servi
 			}
 			apiServerURLKey := cm.Annotations[ExposeConfigApiServerURLKeyAnnotation]
 			if len(apiServerURLKey) > 0 {
-				apiserverURL := apiserverProtocol + "://" + apiserver
 				if cm.Data[apiServerURLKey] != apiserverURL {
 					cm.Data[apiServerURLKey] = apiserverURL
+					updated = true
+				}
+			}
+			if len(consoleURL) == 0 {
+				if isOpenShift(c) {
+					consoleURL = urlJoin(apiserverURL, "/console")
+				}
+			}
+		}
+		if len(consoleURL) > 0 {
+			consoleURLKey := cm.Annotations[ExposeConfigConsoleURLKeyAnnotation]
+			if len(consoleURLKey) > 0 {
+				if cm.Data[consoleURLKey] != consoleURL {
+					cm.Data[consoleURLKey] = consoleURL
 					updated = true
 				}
 			}
@@ -339,6 +355,10 @@ func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Servi
 			}
 		}
 	}
+}
+
+func urlJoin(s1 string, s2 string) string {
+	return strings.TrimSuffix(s1, "/") + "/" + strings.TrimPrefix(s2, "/")
 }
 
 // updateOtherConfigMaps lets update all other configmaps which want to be injected by this svc exposeURL
