@@ -3,6 +3,7 @@ domain:
 exposer:
 watch-current-namespace: true
 exposer: Route
+apiserver: 192.168.64.82:8443
 
 #exposer: Ingress
 #exposer: LoadBalancer
