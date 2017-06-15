@@ -50,10 +50,10 @@ type Config struct {
 	AuthorizePath         string `yaml:"authorize-path,omitempty"`
 	ApiServerProtocol     string `yaml:"apiserver-protocol"`
 	WatchNamespaces       string `yaml:"watch-namespaces"`
-	WatchCurrentNamespace bool `yaml:"watch-current-namespace"`
+	WatchCurrentNamespace bool   `yaml:"watch-current-namespace"`
 
 	// original is the input from which the config was parsed.
-	original              string
+	original string
 }
 
 var (
