@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Use the native vendor/ dependency system
-export GO15VENDOREXPERIMENT=1
-
+GO := GO15VENDOREXPERIMENT=1 go
 VERSION ?= $(shell cat version/VERSION)
 REVISION=$(shell git rev-parse --short HEAD 2> /dev/null || echo 'unknown')
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD 2> /dev/null || echo 'unknown')
 HOST=$(shell hostname -f)
 BUILD_DATE=$(shell date +%Y%m%d-%H:%M:%S)
 GO_VERSION=$(shell go version | sed -e 's/^[^0-9.]*\([0-9.]*\).*/\1/')
+PACKAGE_DIRS := $(shell $(GO) list ./... | grep -v /vendor/)
+FORMATTED := $(shell $(GO) fmt $(PACKAGE_DIRS))
 
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
@@ -47,10 +47,13 @@ GOPACKAGES := $(shell go list ./... | grep -v /vendor/)
 .PHONY: install
 install: $(ORIGINAL_GOPATH)/bin/exposecontroller
 
+fmt:
+	@([[ ! -z "$(FORMATTED)" ]] && printf "Fixed unformatted files:\n$(FORMATTED)") || true
+
 $(ORIGINAL_GOPATH)/bin/exposecontroller: out/exposecontroller-$(GOOS)-$(GOARCH)
 	cp $(BUILD_DIR)/exposecontroller-$(GOOS)-$(GOARCH) $(ORIGINAL_GOPATH)/bin/exposecontroller
 
-out/exposecontroller: out/exposecontroller-$(GOOS)-$(GOARCH)
+out/exposecontroller: out/exposecontroller-$(GOOS)-$(GOARCH) fmt
 	cp $(BUILD_DIR)/exposecontroller-$(GOOS)-$(GOARCH) $(BUILD_DIR)/exposecontroller
 
 out/exposecontroller-darwin-amd64: gopath $(shell $(GOFILES)) version/VERSION
@@ -64,7 +67,7 @@ out/exposecontroller-windows-amd64.exe: gopath $(shell $(GOFILES)) version/VERSI
 
 out/exposecontroller-linux-arm: gopath $(shell $(GOFILES)) version/VERSION
 	CGO_ENABLED=0 GOARCH=arm GOOS=linux go build $(BUILDFLAGS) -o $(BUILD_DIR)/exposecontroller-linux-arm $(ROOT_PACKAGE)
-	
+
 .PHONY: test
 test: gopath
 	go test -v $(GOPACKAGES)

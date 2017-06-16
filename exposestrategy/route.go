@@ -9,11 +9,11 @@ import (
 	"k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/runtime"
 
-	apierrors "k8s.io/kubernetes/pkg/api/errors"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
 	oclient "github.com/openshift/origin/pkg/client"
 	rapi "github.com/openshift/origin/pkg/route/api"
 	rapiv1 "github.com/openshift/origin/pkg/route/api/v1"
+	apierrors "k8s.io/kubernetes/pkg/api/errors"
+	client "k8s.io/kubernetes/pkg/client/unversioned"
 )
 
 type RouteStrategy struct {
@@ -37,15 +37,15 @@ func NewRouteStrategy(client *client.Client, oclient *oclient.Client, encoder ru
 
 	/*
 
-	we don't need the domain for route mode!
-	
-	if len(domain) == 0 {
-		domain, err = getAutoDefaultDomain(client)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to get a domain")
+		we don't need the domain for route mode!
+
+		if len(domain) == 0 {
+			domain, err = getAutoDefaultDomain(client)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to get a domain")
+			}
+			glog.Infof("Using domain: %s", domain)
 		}
-		glog.Infof("Using domain: %s", domain)
-	}
 	*/
 
 	rapi.AddToScheme(api.Scheme)
@@ -78,7 +78,7 @@ func (s *RouteStrategy) Add(svc *api.Service) error {
 			return errors.Wrapf(err, "could not check for existing route %s/%s", svc.Namespace, svc.Name)
 		}
 	}
-	
+
 	if route.Labels == nil {
 		route.Labels = map[string]string{}
 	}
@@ -88,7 +88,7 @@ func (s *RouteStrategy) Add(svc *api.Service) error {
 	if createRoute {
 		route.Labels["provider"] = "fabric8"
 		route.Spec = rapi.RouteSpec{
-			To:   rapi.RouteTargetReference{Name: svc.Name},
+			To: rapi.RouteTargetReference{Name: svc.Name},
 		}
 
 		route.Labels["generator"] = "exposecontroller"

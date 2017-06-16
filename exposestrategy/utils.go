@@ -16,8 +16,7 @@ import (
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 )
 
-
-func findHttpProtocol(svc *api.Service, hostName string) (string) {
+func findHttpProtocol(svc *api.Service, hostName string) string {
 	// default to http
 	protocol := "http"
 
@@ -42,7 +41,6 @@ func addServiceAnnotation(svc *api.Service, hostName string) (*api.Service, erro
 	return addServiceAnnotationWithProtocol(svc, hostName, protocol)
 }
 
-
 func addServiceAnnotationWithProtocol(svc *api.Service, hostName string, protocol string) (*api.Service, error) {
 	exposeURL := protocol + "://" + hostName
 	if svc.Annotations == nil {
@@ -56,7 +54,6 @@ func addServiceAnnotationWithProtocol(svc *api.Service, hostName string, protoco
 
 	return svc, nil
 }
-
 
 // urlJoin joins the given URL paths so that there is a / separating them but not a double //
 func urlJoin(repo string, path string) string {

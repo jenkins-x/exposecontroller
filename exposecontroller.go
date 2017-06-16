@@ -60,7 +60,6 @@ func main() {
 		glog.Fatalf("%s", err)
 	}
 
-
 	//watchNamespaces := api.NamespaceAll
 	watchNamespaces := controllerConfig.WatchNamespaces
 	if controllerConfig.WatchCurrentNamespace {
