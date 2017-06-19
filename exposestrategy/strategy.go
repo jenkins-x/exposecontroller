@@ -28,7 +28,7 @@ var (
 	ApiServicePathAnnotationKey = "api.service.kubernetes.io/path"
 )
 
-func New(exposer, domain string, client *client.Client, restClientConfig *restclient.Config, encoder runtime.Encoder) (ExposeStrategy, error) {
+func New(exposer, domain, nodeIP string, client *client.Client, restClientConfig *restclient.Config, encoder runtime.Encoder) (ExposeStrategy, error) {
 	switch strings.ToLower(exposer) {
 	case "loadbalancer":
 		strategy, err := NewLoadBalancerStrategy(client, encoder)
@@ -37,7 +37,7 @@ func New(exposer, domain string, client *client.Client, restClientConfig *restcl
 		}
 		return strategy, nil
 	case "nodeport":
-		strategy, err := NewNodePortStrategy(client, encoder)
+		strategy, err := NewNodePortStrategy(client, encoder, nodeIP)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create node port expose strategy")
 		}
@@ -60,7 +60,7 @@ func New(exposer, domain string, client *client.Client, restClientConfig *restcl
 		}
 		return strategy, nil
 	case "":
-		strategy, err := NewAutoStrategy(exposer, domain, client, restClientConfig, encoder)
+		strategy, err := NewAutoStrategy(exposer, domain, nodeIP, client, restClientConfig, encoder)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create auto expose strategy")
 		}
