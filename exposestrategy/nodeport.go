@@ -25,24 +25,27 @@ var _ ExposeStrategy = &NodePortStrategy{}
 
 const ExternalIPLabel = "fabric8.io/externalIP"
 
-func NewNodePortStrategy(client *client.Client, encoder runtime.Encoder) (*NodePortStrategy, error) {
-	l, err := client.Nodes().List(api.ListOptions{})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to list nodes")
-	}
-
-	if len(l.Items) != 1 {
-		return nil, errors.Errorf("node port strategy can only be used with single node clusters - found %d nodes", len(l.Items))
-	}
-
-	n := l.Items[0]
-	ip := n.ObjectMeta.Annotations[ExternalIPLabel]
+func NewNodePortStrategy(client *client.Client, encoder runtime.Encoder, nodeIP string) (*NodePortStrategy, error) {
+	ip := nodeIP
 	if len(ip) == 0 {
-		addr, err := getNodeHostIP(n)
+		l, err := client.Nodes().List(api.ListOptions{})
 		if err != nil {
-			return nil, errors.Wrap(err, "cannot discover node IP")
+			return nil, errors.Wrap(err, "failed to list nodes")
 		}
-		ip = addr.String()
+
+		if len(l.Items) != 1 {
+			return nil, errors.Errorf("node port strategy can only be used with single node clusters - found %d nodes", len(l.Items))
+		}
+
+		n := l.Items[0]
+		ip = n.ObjectMeta.Annotations[ExternalIPLabel]
+		if len(ip) == 0 {
+			addr, err := getNodeHostIP(n)
+			if err != nil {
+				return nil, errors.Wrap(err, "cannot discover node IP")
+			}
+			ip = addr.String()
+		}
 	}
 
 	return &NodePortStrategy{

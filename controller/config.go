@@ -47,6 +47,7 @@ type Config struct {
 	Domain                string `yaml:"domain,omitempty"`
 	Exposer               string `yaml:"exposer"`
 	ApiServer             string `yaml:"apiserver,omitempty"`
+	NodeIP                string `yaml:"node-ip,omitempty"`
 	ConsoleURL            string `yaml:"console-url,omitempty"`
 	AuthorizePath         string `yaml:"authorize-path,omitempty"`
 	ApiServerProtocol     string `yaml:"apiserver-protocol"`

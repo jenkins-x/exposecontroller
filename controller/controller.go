@@ -3,8 +3,8 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -13,14 +13,14 @@ import (
 	"github.com/pkg/errors"
 
 	"k8s.io/kubernetes/pkg/api"
+	uapi "k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/record"
 	"k8s.io/kubernetes/pkg/client/restclient"
+	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/watch"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
-	uapi "k8s.io/kubernetes/pkg/api/unversioned"
 
 	"github.com/fabric8io/exposecontroller/exposestrategy"
 
@@ -72,7 +72,7 @@ func NewController(
 		}),
 	}
 
-	strategy, err := exposestrategy.New(config.Exposer, config.Domain, kubeClient, restClientConfig, encoder)
+	strategy, err := exposestrategy.New(config.Exposer, config.Domain, config.NodeIP, kubeClient, restClientConfig, encoder)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create new strategy")
 	}
