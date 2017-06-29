@@ -21,12 +21,14 @@ type RouteStrategy struct {
 	oclient *oclient.Client
 	encoder runtime.Encoder
 
-	domain string
+	domain  string
+	host    string
+	usePath bool
 }
 
 var _ ExposeStrategy = &RouteStrategy{}
 
-func NewRouteStrategy(client *client.Client, oclient *oclient.Client, encoder runtime.Encoder, domain string) (*RouteStrategy, error) {
+func NewRouteStrategy(client *client.Client, oclient *oclient.Client, encoder runtime.Encoder, domain, routeHost string, routeUsePath bool) (*RouteStrategy, error) {
 	t, err := typeOfMaster(client)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not create new route strategy")
@@ -56,7 +58,8 @@ func NewRouteStrategy(client *client.Client, oclient *oclient.Client, encoder ru
 		oclient: oclient,
 		encoder: encoder,
 		domain:  domain,
-	}, nil
+		host:    routeHost,
+		usePath: routeUsePath}, nil
 }
 
 func (s *RouteStrategy) Add(svc *api.Service) error {
@@ -87,8 +90,14 @@ func (s *RouteStrategy) Add(svc *api.Service) error {
 	protocol := "http"
 	if createRoute {
 		route.Labels["provider"] = "fabric8"
+		path := ""
+		if s.usePath {
+			path = "/" + svc.Name
+		}
 		route.Spec = rapi.RouteSpec{
-			To: rapi.RouteTargetReference{Name: svc.Name},
+			To:   rapi.RouteTargetReference{Name: svc.Name},
+			Host: s.host,
+			Path: path,
 		}
 
 		route.Labels["generator"] = "exposecontroller"
