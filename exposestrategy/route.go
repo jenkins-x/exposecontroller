@@ -114,6 +114,8 @@ func (s *RouteStrategy) Add(svc *api.Service) error {
 			if err != nil {
 				return errors.Wrapf(err, "failed to delete old %s/%s", route.Namespace, route.Name)
 			}
+			route.Spec.Host = s.host
+			route.Spec.Path = path
 			route.ResourceVersion = ""
 			//route.Status = rapiv1.RouteStatus{}
 			route.Labels["generator"] = "exposecontroller"
@@ -124,8 +126,6 @@ func (s *RouteStrategy) Add(svc *api.Service) error {
 			hostName, protocol = hostNameAndProtocolFromRoute(svc, updated)
 		} else if generator == "exposecontroller" {
 			// lets only update the route if the route that exists was created by exposecontroller
-			route.Spec.Host = s.host
-			route.Spec.Path = path
 			updated, err := s.oclient.Routes(route.Namespace).Update(route)
 			if err != nil {
 				return errors.Wrapf(err, "failed to update route %s/%s", route.Namespace, route.Name)
