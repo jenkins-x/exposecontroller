@@ -86,14 +86,14 @@ func (s *RouteStrategy) Add(svc *api.Service) error {
 		route.Labels = map[string]string{}
 	}
 
+	path := ""
+	if s.usePath {
+		path = "/" + svc.Name
+	}
 	var hostName string
 	protocol := "http"
 	if createRoute {
 		route.Labels["provider"] = "fabric8"
-		path := ""
-		if s.usePath {
-			path = "/" + svc.Name
-		}
 		route.Spec = rapi.RouteSpec{
 			To:   rapi.RouteTargetReference{Name: svc.Name},
 			Host: s.host,
@@ -107,9 +107,25 @@ func (s *RouteStrategy) Add(svc *api.Service) error {
 		}
 		hostName, protocol = hostNameAndProtocolFromRoute(svc, updated)
 	} else {
-		// lets only update the route if the route that exists was not created by exposecontroller
 		generator := route.Labels["generator"]
-		if generator == "exposecontroller" {
+		if s.usePath && (route.Spec.Path != path || route.Spec.Host != s.host) {
+			// we have to delete and recreate the route
+			err = s.oclient.Routes(route.Namespace).Delete(route.Name)
+			if err != nil {
+				return errors.Wrapf(err, "failed to delete old %s/%s", route.Namespace, route.Name)
+			}
+			route.ResourceVersion = ""
+			//route.Status = rapiv1.RouteStatus{}
+			route.Labels["generator"] = "exposecontroller"
+			updated, err := s.oclient.Routes(route.Namespace).Create(route)
+			if err != nil {
+				return errors.Wrapf(err, "failed to create route %s/%s", route.Namespace, route.Name)
+			}
+			hostName, protocol = hostNameAndProtocolFromRoute(svc, updated)
+		} else if generator == "exposecontroller" {
+			// lets only update the route if the route that exists was created by exposecontroller
+			route.Spec.Host = s.host
+			route.Spec.Path = path
 			updated, err := s.oclient.Routes(route.Namespace).Update(route)
 			if err != nil {
 				return errors.Wrapf(err, "failed to update route %s/%s", route.Namespace, route.Name)
