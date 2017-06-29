@@ -157,7 +157,7 @@ func (s *RouteStrategy) Add(svc *api.Service) error {
 func hostNameAndProtocolFromRoute(svc *api.Service, route *rapi.Route) (string, string) {
 	protocol := "http"
 	spec := route.Spec
-	hostName := spec.Host
+	hostName := spec.Host + spec.Path
 	if spec.TLS != nil {
 		protocol = "https"
 	} else {
