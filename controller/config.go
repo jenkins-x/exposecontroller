@@ -48,6 +48,8 @@ type Config struct {
 	Exposer               string `yaml:"exposer"`
 	ApiServer             string `yaml:"apiserver,omitempty"`
 	NodeIP                string `yaml:"node-ip,omitempty"`
+	RouteHost             string `yaml:"route-host,omitempty"`
+	RouteUsePath          bool   `yaml:"route-use-path,omitempty"`
 	ConsoleURL            string `yaml:"console-url,omitempty"`
 	AuthorizePath         string `yaml:"authorize-path,omitempty"`
 	ApiServerProtocol     string `yaml:"apiserver-protocol"`

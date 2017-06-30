@@ -72,7 +72,7 @@ func NewController(
 		}),
 	}
 
-	strategy, err := exposestrategy.New(config.Exposer, config.Domain, config.NodeIP, kubeClient, restClientConfig, encoder)
+	strategy, err := exposestrategy.New(config.Exposer, config.Domain, config.NodeIP, config.RouteHost, config.RouteUsePath, kubeClient, restClientConfig, encoder)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create new strategy")
 	}
