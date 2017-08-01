@@ -24,11 +24,12 @@ type RouteStrategy struct {
 	domain  string
 	host    string
 	usePath bool
+	http    bool
 }
 
 var _ ExposeStrategy = &RouteStrategy{}
 
-func NewRouteStrategy(client *client.Client, oclient *oclient.Client, encoder runtime.Encoder, domain, routeHost string, routeUsePath bool) (*RouteStrategy, error) {
+func NewRouteStrategy(client *client.Client, oclient *oclient.Client, encoder runtime.Encoder, domain, routeHost string, routeUsePath, http bool) (*RouteStrategy, error) {
 	t, err := typeOfMaster(client)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not create new route strategy")
@@ -59,7 +60,8 @@ func NewRouteStrategy(client *client.Client, oclient *oclient.Client, encoder ru
 		encoder: encoder,
 		domain:  domain,
 		host:    routeHost,
-		usePath: routeUsePath}, nil
+		usePath: routeUsePath,
+		http:    http}, nil
 }
 
 func (s *RouteStrategy) Add(svc *api.Service) error {
@@ -99,7 +101,10 @@ func (s *RouteStrategy) Add(svc *api.Service) error {
 			Host: s.host,
 			Path: path,
 		}
-
+		if s.http {
+			route.Spec.TLS.Termination = "edge"
+			route.Spec.TLS.InsecureEdgeTerminationPolicy = "Redirect"
+		}
 		route.Labels["generator"] = "exposecontroller"
 		updated, err := s.oclient.Routes(route.Namespace).Create(route)
 		if err != nil {
@@ -117,6 +122,10 @@ func (s *RouteStrategy) Add(svc *api.Service) error {
 			route.Spec.Host = s.host
 			route.Spec.Path = path
 			route.ResourceVersion = ""
+			if s.http {
+				route.Spec.TLS.Termination = "edge"
+				route.Spec.TLS.InsecureEdgeTerminationPolicy = "Redirect"
+			}
 			//route.Status = rapiv1.RouteStatus{}
 			route.Labels["generator"] = "exposecontroller"
 			updated, err := s.oclient.Routes(route.Namespace).Create(route)
