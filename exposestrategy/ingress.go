@@ -19,12 +19,15 @@ type IngressStrategy struct {
 	client  *client.Client
 	encoder runtime.Encoder
 
-	domain string
+	domain        string
+	tlsSecretName string
+	http          bool
+	tlsAcme       bool
 }
 
 var _ ExposeStrategy = &IngressStrategy{}
 
-func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain string) (*IngressStrategy, error) {
+func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain string, http, tlsAcme bool) (*IngressStrategy, error) {
 	t, err := typeOfMaster(client)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not create new ingress strategy")
@@ -45,6 +48,7 @@ func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain s
 		client:  client,
 		encoder: encoder,
 		domain:  domain,
+		http:    http,
 	}, nil
 }
 
@@ -72,6 +76,11 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 	}
 	ingress.Labels["provider"] = "fabric8"
 
+	if ingress.Annotations == nil {
+		ingress.Annotations = map[string]string{}
+	}
+	ingress.Annotations["kubernetes.io/tls-acme"] = "true"
+
 	ingress.Spec.Rules = []extensions.IngressRule{}
 	for _, port := range svc.Spec.Ports {
 		rule := extensions.IngressRule{
@@ -90,6 +99,15 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 			},
 		}
 		ingress.Spec.Rules = append(ingress.Spec.Rules, rule)
+
+		if !s.http {
+			ingress.Spec.TLS = []extensions.IngressTLS{
+				{
+					Hosts:      []string{hostName},
+					SecretName: "tls-" + svc.Name,
+				},
+			}
+		}
 	}
 
 	if createIngress {

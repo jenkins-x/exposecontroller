@@ -28,7 +28,7 @@ var (
 	ApiServicePathAnnotationKey = "api.service.kubernetes.io/path"
 )
 
-func New(exposer, domain, nodeIP, routeHost string, routeUsePath bool, client *client.Client, restClientConfig *restclient.Config, encoder runtime.Encoder) (ExposeStrategy, error) {
+func New(exposer, domain, nodeIP, routeHost string, routeUsePath, http, tlsAcme bool, client *client.Client, restClientConfig *restclient.Config, encoder runtime.Encoder) (ExposeStrategy, error) {
 	switch strings.ToLower(exposer) {
 	case "loadbalancer":
 		strategy, err := NewLoadBalancerStrategy(client, encoder)
@@ -43,7 +43,7 @@ func New(exposer, domain, nodeIP, routeHost string, routeUsePath bool, client *c
 		}
 		return strategy, nil
 	case "ingress":
-		strategy, err := NewIngressStrategy(client, encoder, domain)
+		strategy, err := NewIngressStrategy(client, encoder, domain, http, tlsAcme)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create ingress expose strategy")
 		}
@@ -54,13 +54,13 @@ func New(exposer, domain, nodeIP, routeHost string, routeUsePath bool, client *c
 		ocfg.GroupVersion = nil
 		ocfg.NegotiatedSerializer = nil
 		oc, _ := oclient.New(&ocfg)
-		strategy, err := NewRouteStrategy(client, oc, encoder, domain, routeHost, routeUsePath)
+		strategy, err := NewRouteStrategy(client, oc, encoder, domain, routeHost, routeUsePath, http)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create ingress expose strategy")
 		}
 		return strategy, nil
 	case "":
-		strategy, err := NewAutoStrategy(exposer, domain, nodeIP, routeHost, routeUsePath, client, restClientConfig, encoder)
+		strategy, err := NewAutoStrategy(exposer, domain, nodeIP, routeHost, routeUsePath, http, tlsAcme, client, restClientConfig, encoder)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create auto expose strategy")
 		}
