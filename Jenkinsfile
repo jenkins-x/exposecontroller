@@ -31,9 +31,16 @@ def updateDownstreamDependencies(v) {
     propertyName = 'exposecontroller.version'
     projects = [
             'fabric8io/fabric8-devops',
-            'fabric8io/fabric8-platform',
+            'fabric8io/fabric8-platform'
+    ]
+    version = v
+  }
+  pushPomPropertyChangePR {
+    propertyName = 'exposecontroller.version'
+    projects = [
             'funktionio/funktion-platform'
     ]
+    autoMerge = true
     version = v
   }
 }
