@@ -49,6 +49,7 @@ func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain s
 		encoder: encoder,
 		domain:  domain,
 		http:    http,
+		tlsAcme: tlsAcme,
 	}, nil
 }
 
