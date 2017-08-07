@@ -79,7 +79,9 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 	if ingress.Annotations == nil {
 		ingress.Annotations = map[string]string{}
 	}
-	ingress.Annotations["kubernetes.io/tls-acme"] = "true"
+	if s.tlsAcme {
+		ingress.Annotations["kubernetes.io/tls-acme"] = "true"
+	}
 
 	ingress.Spec.Rules = []extensions.IngressRule{}
 	for _, port := range svc.Spec.Ports {
