@@ -379,11 +379,14 @@ func updateOtherConfigMaps(c *client.Client, oc *oclient.Client, svc *api.Servic
 		}
 		if len(updateKey) > 0 {
 			exposeURL = strings.TrimSuffix(exposeURL, "/")
-			value := cm.Data[updateKey]
-			if value != exposeURL {
-				cm.Data[updateKey] = exposeURL
-				glog.Infof("Updating ConfigMap %s in namespace %s with key %s", cm.Name, ns, updateKey)
-				update = true
+			keys := strings.Split(updateKey, ",")
+			for _, key := range keys {
+				value := cm.Data[key]
+				if value != exposeURL {
+					cm.Data[key] = exposeURL
+					glog.Infof("Updating ConfigMap %s in namespace %s with key %s", cm.Name, ns, key)
+					update = true
+				}
 			}
 		}
 		updateKey = cm.Annotations[annotationFullKey]
@@ -391,11 +394,14 @@ func updateOtherConfigMaps(c *client.Client, oc *oclient.Client, svc *api.Servic
 			if !strings.HasSuffix(exposeURL, "/") {
 				exposeURL += "/"
 			}
-			value := cm.Data[updateKey]
-			if value != exposeURL {
-				cm.Data[updateKey] = exposeURL
-				glog.Infof("Updating ConfigMap %s in namespace %s with key %s", cm.Name, ns, updateKey)
-				update = true
+			keys := strings.Split(updateKey, ",")
+			for _, key := range keys {
+				value := cm.Data[key]
+				if value != exposeURL {
+					cm.Data[key] = exposeURL
+					glog.Infof("Updating ConfigMap %s in namespace %s with key %s", cm.Name, ns, key)
+					update = true
+				}
 			}
 		}
 		if update {
