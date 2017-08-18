@@ -366,6 +366,8 @@ func updateOtherConfigMaps(c *client.Client, oc *oclient.Client, svc *api.Servic
 	serviceName := svc.Name
 	annotationKey := "expose.service-key.config.fabric8.io/" + serviceName
 	annotationFullKey := "expose-full.service-key.config.fabric8.io/" + serviceName
+	annotationNoProtocolKey := "expose-no-protocol.service-key.config.fabric8.io/" + serviceName
+	annotationFullNoProtocolKey := "expose-full-no-protocol.service-key.config.fabric8.io/" + serviceName
 	ns := svc.Namespace
 	cms, err := c.ConfigMaps(ns).List(api.ListOptions{})
 	if err != nil {
@@ -394,6 +396,41 @@ func updateOtherConfigMaps(c *client.Client, oc *oclient.Client, svc *api.Servic
 			if !strings.HasSuffix(exposeURL, "/") {
 				exposeURL += "/"
 			}
+			keys := strings.Split(updateKey, ",")
+			for _, key := range keys {
+				value := cm.Data[key]
+				if value != exposeURL {
+					cm.Data[key] = exposeURL
+					glog.Infof("Updating ConfigMap %s in namespace %s with key %s", cm.Name, ns, key)
+					update = true
+				}
+			}
+		}
+		updateKey = cm.Annotations[annotationNoProtocolKey]
+		if cm.Data == nil {
+			cm.Data = map[string]string{}
+		}
+		if len(updateKey) > 0 {
+			exposeURL = strings.TrimSuffix(exposeURL, "/")
+			exposeURL = strings.TrimPrefix(exposeURL, "http://")
+			exposeURL = strings.TrimPrefix(exposeURL, "https://")
+			keys := strings.Split(updateKey, ",")
+			for _, key := range keys {
+				value := cm.Data[key]
+				if value != exposeURL {
+					cm.Data[key] = exposeURL
+					glog.Infof("Updating ConfigMap %s in namespace %s with key %s", cm.Name, ns, key)
+					update = true
+				}
+			}
+		}
+		updateKey = cm.Annotations[annotationFullNoProtocolKey]
+		if len(updateKey) > 0 {
+			if !strings.HasSuffix(exposeURL, "/") {
+				exposeURL += "/"
+			}
+			exposeURL = strings.TrimPrefix(exposeURL, "http://")
+			exposeURL = strings.TrimPrefix(exposeURL, "https://")
 			keys := strings.Split(updateKey, ",")
 			for _, key := range keys {
 				value := cm.Data[key]
