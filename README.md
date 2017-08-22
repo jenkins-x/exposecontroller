@@ -96,6 +96,7 @@ If you wish to enable injection of the expose URL into a `ConfigMap` then
   - `expose.config.fabric8.io/apiserver-key` : Kubernetes / OpenShift API server host and port (format `host:port`)
   - `expose.config.fabric8.io/apiserver-url-key` : Kubernetes / OpenShift API server URL (format `https://host:port`)
   - `expose.config.fabric8.io/apiserver-protocol-key` : Kubernetes / OpenShift API server protocol (either http or https)
+  - `expose.config.fabric8.io/url-protocol` : The default protocol used by Kubernetes Ingress or OpenShift Routes when exposing URLs
   - `expose.config.fabric8.io/console-url-key` : OpenShift Web Console URL
   - `expose.config.fabric8.io/oauth-authorize-url-key` : OAuth Authorization URL
   - `expose.service-key.config.fabric8.io/foo` : Exposed URL of the service called `foo`

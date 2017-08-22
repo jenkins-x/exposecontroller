@@ -30,6 +30,7 @@ import (
 )
 
 const (
+	ExposeConfigURLProtocol                    = "expose.config.fabric8.io/url-protocol"
 	ExposeConfigURLKeyAnnotation               = "expose.config.fabric8.io/url-key"
 	ExposeConfigHostKeyAnnotation              = "expose.config.fabric8.io/host-key"
 	ExposeConfigApiServerKeyAnnotation         = "expose.config.fabric8.io/apiserver-key"
@@ -436,6 +437,22 @@ func updateOtherConfigMaps(c *client.Client, oc *oclient.Client, svc *api.Servic
 				value := cm.Data[key]
 				if value != exposeURL {
 					cm.Data[key] = exposeURL
+					glog.Infof("Updating ConfigMap %s in namespace %s with key %s", cm.Name, ns, key)
+					update = true
+				}
+			}
+		}
+		updateKey = cm.Annotations[ExposeConfigURLProtocol]
+		if len(updateKey) > 0 {
+			protocol := "https"
+			if config.HTTP {
+				protocol = "http"
+			}
+			keys := strings.Split(updateKey, ",")
+			for _, key := range keys {
+				value := cm.Data[key]
+				if value != protocol {
+					cm.Data[key] = protocol
 					glog.Infof("Updating ConfigMap %s in namespace %s with key %s", cm.Name, ns, key)
 					update = true
 				}
