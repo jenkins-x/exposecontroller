@@ -101,10 +101,13 @@ func (s *RouteStrategy) Add(svc *api.Service) error {
 			Host: s.host,
 			Path: path,
 		}
-		if s.http {
-			route.Spec.TLS.Termination = "edge"
-			route.Spec.TLS.InsecureEdgeTerminationPolicy = "Redirect"
+
+		if !s.http {
+			route.Spec.TLS = new(rapi.TLSConfig)
+			route.Spec.TLS.Termination = rapi.TLSTerminationEdge
+			route.Spec.TLS.InsecureEdgeTerminationPolicy = rapi.InsecureEdgeTerminationPolicyRedirect
 		}
+
 		route.Labels["generator"] = "exposecontroller"
 		updated, err := s.oclient.Routes(route.Namespace).Create(route)
 		if err != nil {
@@ -122,7 +125,10 @@ func (s *RouteStrategy) Add(svc *api.Service) error {
 			route.Spec.Host = s.host
 			route.Spec.Path = path
 			route.ResourceVersion = ""
-			if s.http {
+			if !s.http {
+				if route.Spec.TLS == nil {
+					route.Spec.TLS = new(rapi.TLSConfig)
+				}
 				route.Spec.TLS.Termination = "edge"
 				route.Spec.TLS.InsecureEdgeTerminationPolicy = "Redirect"
 			}
