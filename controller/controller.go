@@ -188,7 +188,7 @@ func findApiServerFromNode(c *client.Client) string {
 	}
 	items := nodes.Items
 	if len(items) != 1 {
-		glog.Errorf("Number of nodes is %d. We need 1 to detect minishift. Please use  to list nodes to detect minishift: %v", err)
+		glog.Errorf("Number of nodes is %d. We need 1 to detect minishift. Please use  to list nodes to detect minishift: %v", items, err)
 		return ""
 	}
 	node := items[0]
