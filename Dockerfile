@@ -1,5 +1,5 @@
 FROM scratch
 
-ENTRYPOINT ["/exposecontroller"]
+ENTRYPOINT ["/exposecontroller", "--daemon"]
 
 COPY ./out/exposecontroller-linux-amd64 /exposecontroller
