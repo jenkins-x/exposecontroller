@@ -92,7 +92,7 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 		annotations := strings.Split(annotationsForIngress, "\n")
 		for _, element := range annotations {
 			annotation := strings.Split(element, ":")
-			key, value := annotation[0], annotation[1]
+			key, value := annotation[0], strings.TrimSpace(annotation[1])
 			ingress.Annotations[key] = value
 		}
 	}
