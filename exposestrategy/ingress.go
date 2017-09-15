@@ -87,9 +87,9 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 		tlsSecretName = "tls-" + svc.Name
 	}
 
-	annotationsForIngress := svc.Labels["annotations-for-ingress"]
+	annotationsForIngress := svc.Annotations["fabric8.io/ingress.annotations"]
 	if annotationsForIngress != "" {
-		annotations := strings.Split(annotationsForIngress, ",")
+		annotations := strings.Split(annotationsForIngress, "\n")
 		for _, element := range annotations {
 			annotation := strings.Split(element, ":")
 			key, value := annotation[0], annotation[1]
