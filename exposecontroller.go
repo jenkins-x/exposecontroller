@@ -36,6 +36,12 @@ var (
 	profiling = flags.Bool("profiling", true, `Enable profiling via web interface host:port/debug/pprof/`)
 
 	daemon = flag.Bool("daemon", false, `Run as daemon mode watching changes as it happens.`)
+
+	domain     = flag.String("domain", "", "Domain to use with your DNS provider (default: .nip.io).")
+	exposer    = flag.String("exposer", "", "Which strategy exposecontroller should use to access applications")
+	apiserver  = flag.String("api-server", "", "API server URL")
+	consoleurl = flag.String("console-server", "", "Console URL")
+	httpb      = flag.Bool("http", false, `Use HTTP`)
 )
 
 func main() {
@@ -60,6 +66,22 @@ func main() {
 	controllerConfig, err := controller.LoadFile(*configFile)
 	if err != nil {
 		glog.Fatalf("%s", err)
+	}
+
+	if *domain != "" {
+		controllerConfig.Domain = *domain
+	}
+	if *exposer != "" {
+		controllerConfig.Exposer = *exposer
+	}
+	if *apiserver != "" {
+		controllerConfig.ApiServer = *apiserver
+	}
+	if *consoleurl != "" {
+		controllerConfig.ConsoleURL = *consoleurl
+	}
+	if *httpb {
+		controllerConfig.HTTP = *httpb
 	}
 
 	//watchNamespaces := api.NamespaceAll
