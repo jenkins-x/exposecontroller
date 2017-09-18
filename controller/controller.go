@@ -544,6 +544,10 @@ func (c *Controller) Stop() {
 	close(c.stopCh)
 }
 
+func (c *Controller) Hasrun() bool {
+	return c.svcController.HasSynced()
+}
+
 func serviceListFunc(c *client.Client, ns string) func(api.ListOptions) (runtime.Object, error) {
 	return func(opts api.ListOptions) (runtime.Object, error) {
 		return c.Services(ns).List(opts)

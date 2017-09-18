@@ -34,6 +34,14 @@ var (
 	healthzPort = flags.Int("healthz-port", healthPort, "port for healthz endpoint.")
 
 	profiling = flags.Bool("profiling", true, `Enable profiling via web interface host:port/debug/pprof/`)
+
+	daemon = flag.Bool("daemon", false, `Run as daemon mode watching changes as it happens.`)
+
+	domain     = flag.String("domain", "", "Domain to use with your DNS provider (default: .nip.io).")
+	exposer    = flag.String("exposer", "", "Which strategy exposecontroller should use to access applications")
+	apiserver  = flag.String("api-server", "", "API server URL")
+	consoleurl = flag.String("console-server", "", "Console URL")
+	httpb      = flag.Bool("http", false, `Use HTTP`)
 )
 
 func main() {
@@ -60,6 +68,22 @@ func main() {
 		glog.Fatalf("%s", err)
 	}
 
+	if *domain != "" {
+		controllerConfig.Domain = *domain
+	}
+	if *exposer != "" {
+		controllerConfig.Exposer = *exposer
+	}
+	if *apiserver != "" {
+		controllerConfig.ApiServer = *apiserver
+	}
+	if *consoleurl != "" {
+		controllerConfig.ConsoleURL = *consoleurl
+	}
+	if *httpb {
+		controllerConfig.HTTP = *httpb
+	}
+
 	//watchNamespaces := api.NamespaceAll
 	watchNamespaces := controllerConfig.WatchNamespaces
 	if controllerConfig.WatchCurrentNamespace {
@@ -75,17 +99,47 @@ func main() {
 		}
 		watchNamespaces = currentNamespace
 	}
-	glog.Infof("Watching services in namespaces: `%s`", watchNamespaces)
 
-	c, err := controller.NewController(kubeClient, restClientConfig, factory.JSONEncoder(), *resyncPeriod, watchNamespaces, controllerConfig)
-	if err != nil {
-		glog.Fatalf("%s", err)
+	if *daemon {
+		glog.Infof("Watching services in namespaces: `%s`", watchNamespaces)
+
+		c, err := controller.NewController(kubeClient, restClientConfig, factory.JSONEncoder(), *resyncPeriod, watchNamespaces, controllerConfig)
+		if err != nil {
+			glog.Fatalf("%s", err)
+		}
+
+		go registerHandlers()
+		go handleSigterm(c)
+
+		c.Run()
+	} else {
+		glog.Infof("Running in : `%s`", watchNamespaces)
+		c, err := controller.NewController(kubeClient, restClientConfig, factory.JSONEncoder(), *resyncPeriod, watchNamespaces, controllerConfig)
+		if err != nil {
+			glog.Fatalf("%s", err)
+		}
+
+		ticker := time.NewTicker(5 * time.Second)
+		quit := make(chan struct{})
+		go func() {
+			for {
+				select {
+				case <-ticker.C:
+					if c.Hasrun() {
+						close(quit)
+					}
+				case <-quit:
+					c.Stop()
+					ticker.Stop()
+					return
+				}
+			}
+		}()
+		// Handle Control-C has well here
+		go handleSigterm(c)
+
+		c.Run()
 	}
-
-	go registerHandlers()
-	go handleSigterm(c)
-
-	c.Run()
 }
 
 func registerHandlers() {
