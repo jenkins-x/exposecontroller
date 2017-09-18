@@ -3,6 +3,7 @@ package exposestrategy
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
@@ -84,6 +85,16 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 	if s.tlsAcme {
 		ingress.Annotations["kubernetes.io/tls-acme"] = "true"
 		tlsSecretName = "tls-" + svc.Name
+	}
+
+	annotationsForIngress := svc.Annotations["fabric8.io/ingress.annotations"]
+	if annotationsForIngress != "" {
+		annotations := strings.Split(annotationsForIngress, "\n")
+		for _, element := range annotations {
+			annotation := strings.Split(element, ":")
+			key, value := annotation[0], strings.TrimSpace(annotation[1])
+			ingress.Annotations[key] = value
+		}
 	}
 
 	ingress.Spec.Rules = []extensions.IngressRule{}
