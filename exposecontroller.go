@@ -37,11 +37,13 @@ var (
 
 	daemon = flag.Bool("daemon", false, `Run as daemon mode watching changes as it happens.`)
 
-	domain     = flag.String("domain", "", "Domain to use with your DNS provider (default: .nip.io).")
-	exposer    = flag.String("exposer", "", "Which strategy exposecontroller should use to access applications")
-	apiserver  = flag.String("api-server", "", "API server URL")
-	consoleurl = flag.String("console-server", "", "Console URL")
-	httpb      = flag.Bool("http", false, `Use HTTP`)
+	domain                = flag.String("domain", "", "Domain to use with your DNS provider (default: .nip.io).")
+	exposer               = flag.String("exposer", "", "Which strategy exposecontroller should use to access applications")
+	apiserver             = flag.String("api-server", "", "API server URL")
+	consoleurl            = flag.String("console-server", "", "Console URL")
+	httpb                 = flag.Bool("http", false, `Use HTTP`)
+	watchNamespaces       = flag.String("watch-namespace", "", "Exposecontroller will only look at the provided namespace")
+	watchCurrentNamespace = flag.Bool("watch-current-namespace", true, `Exposecontroller will look at the current namespace only - (default: 'true' unless --watch-namespace specified)`)
 )
 
 func main() {
@@ -82,6 +84,13 @@ func main() {
 	}
 	if *httpb {
 		controllerConfig.HTTP = *httpb
+	}
+	if *watchCurrentNamespace {
+		controllerConfig.WatchCurrentNamespace = *watchCurrentNamespace
+	}
+	if *watchNamespaces != "" {
+		controllerConfig.WatchNamespaces = *watchNamespaces
+		controllerConfig.WatchCurrentNamespace = false
 	}
 
 	//watchNamespaces := api.NamespaceAll
