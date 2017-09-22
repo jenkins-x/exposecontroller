@@ -101,6 +101,7 @@ If you wish to enable injection of the expose URL into a `ConfigMap` then
   - `expose.config.fabric8.io/oauth-authorize-url-key` : OAuth Authorization URL
   - `expose.service-key.config.fabric8.io/foo` : Exposed URL of the service called `foo`
   - `expose-full.service-key.config.fabric8.io/foo` : Exposed URL of the service called `foo` ensuring that the URL ends with a `/` character
+  - `expose-no-path.service-key.config.fabric8.io//foo` : Exposed URL of the service called `foo` with any Service path removed (so just the protocol and host)
   - `expose-no-protocol.service-key.config.fabric8.io/foo` : Exposed URL of the service called `foo` with the http protocol removed
   - `expose-full-no-protocol.service-key.config.fabric8.io/foo` : Exposed URL of the service called `foo` ensuring that the URL ends with a `/` character and the http protocol removed
 
