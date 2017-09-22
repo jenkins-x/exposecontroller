@@ -368,6 +368,7 @@ func updateOtherConfigMaps(c *client.Client, oc *oclient.Client, svc *api.Servic
 	annotationKey := "expose.service-key.config.fabric8.io/" + serviceName
 	annotationFullKey := "expose-full.service-key.config.fabric8.io/" + serviceName
 	annotationNoProtocolKey := "expose-no-protocol.service-key.config.fabric8.io/" + serviceName
+	annotationNoPathKey := "expose-no-path.service-key.config.fabric8.io/" + serviceName
 	annotationFullNoProtocolKey := "expose-full-no-protocol.service-key.config.fabric8.io/" + serviceName
 	ns := svc.Namespace
 	cms, err := c.ConfigMaps(ns).List(api.ListOptions{})
@@ -404,6 +405,28 @@ func updateOtherConfigMaps(c *client.Client, oc *oclient.Client, svc *api.Servic
 					cm.Data[key] = exposeURL
 					glog.Infof("Updating ConfigMap %s in namespace %s with key %s", cm.Name, ns, key)
 					update = true
+				}
+			}
+		}
+		updateKey = cm.Annotations[annotationNoPathKey]
+		if cm.Data == nil {
+			cm.Data = map[string]string{}
+		}
+		if len(updateKey) > 0 {
+			u, err := url.Parse(exposeURL)
+			if err != nil {
+				glog.Warningf("Failed to parse URL %s due to %s", exposeURL, err)
+			} else {
+				u.Path = "/"
+				noPathURL := u.String()
+				keys := strings.Split(updateKey, ",")
+				for _, key := range keys {
+					value := cm.Data[key]
+					if value != noPathURL {
+						cm.Data[key] = noPathURL
+						glog.Infof("Updating ConfigMap %s in namespace %s with key %s", cm.Name, ns, key)
+						update = true
+					}
 				}
 			}
 		}
