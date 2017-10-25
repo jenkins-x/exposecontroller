@@ -99,3 +99,6 @@ clean:
 .PHONY: docker
 docker: out/exposecontroller-linux-amd64
 	docker build -t "fabric8/exposecontroller:dev" .
+
+kube-redeploy: docker
+	kubectl delete pod -l project=exposecontroller-app

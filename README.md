@@ -144,6 +144,32 @@ Make sure you've got your kube config file set up properly (remember to `oc logi
 * run in kubernetes
 `kubectl create -f examples/config-map.yml -f examples/deployment.yml`
 
+
+## Rapid development on Minikube / Minishift
+
+If you run fabric8 in minikube or minishift then you can get rapid feedback of your code via the following:
+
+on openshift:
+ * oc edit dc exposecontroller
+on kubernetes:
+ * kubectl edit deploy exposecontroller
+
+* replace the `fabric8/exposecontroller:xxxx` image with `fabric8/exposecontroller:dev` and save
+
+Now when developing you can:
+
+* use the `kube-redeploy` make target whenever you want to create a new docker image and redeploy
+```
+make kube-redeploy
+```
+if the docker build fails you may need to type this first to point your local shell at the docker daemon inside minishift/minikube:
+```
+eval $(minishift docker-env)
+or
+eval $(minikube docker-env)
+
+```
+
 ### Developing 
 
 Glide is as the exposecontroller package management

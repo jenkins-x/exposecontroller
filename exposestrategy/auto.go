@@ -115,6 +115,14 @@ func getAutoDefaultDomain(c *client.Client) (string, error) {
 // copied from k8s.io/kubernetes/pkg/master/master.go
 func getExternalIP(node api.Node) (string, error) {
 	var fallback string
+	ann := node.Annotations
+	if ann != nil {
+		for k, v := range ann {
+			if len(v) > 0 && strings.HasSuffix(k, "kubernetes.io/provided-node-ip") {
+				return v, nil
+			}
+		}
+	}
 	for ix := range node.Status.Addresses {
 		addr := &node.Status.Addresses[ix]
 		if addr.Type == api.NodeExternalIP {
