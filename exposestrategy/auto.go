@@ -52,6 +52,8 @@ func getAutoDefaultExposeRule(c *client.Client) (string, error) {
 		return route, nil
 	}
 
+	// lets default to Ingress on kubernetes for now
+	/*
 	nodes, err := c.Nodes().List(api.ListOptions{})
 	if err != nil {
 		return "", errors.Wrap(err, "failed to find any nodes")
@@ -62,6 +64,7 @@ func getAutoDefaultExposeRule(c *client.Client) (string, error) {
 			return nodePort, nil
 		}
 	}
+	*/
 	return ingress, nil
 }
 
