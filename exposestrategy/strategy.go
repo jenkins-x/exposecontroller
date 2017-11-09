@@ -24,6 +24,7 @@ type Label struct {
 
 var (
 	ExposeLabel                 = Label{Key: "expose", Value: "true"}
+	ExposeAnnotation            = Label{Key: "fabric8.io/expose", Value: "true"}
 	ExposeAnnotationKey         = "fabric8.io/exposeUrl"
 	ApiServicePathAnnotationKey = "api.service.kubernetes.io/path"
 )
