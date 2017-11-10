@@ -134,7 +134,7 @@ func NewController(
 		framework.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
 				svc := obj.(*api.Service)
-				if svc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value {
+				if svc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value || svc.Annotations[exposestrategy.ExposeAnnotation.Key] == exposestrategy.ExposeAnnotation.Value {
 					err := strategy.Add(svc)
 					if err != nil {
 						glog.Errorf("Add failed: %v", err)
@@ -144,7 +144,7 @@ func NewController(
 			},
 			UpdateFunc: func(oldObj interface{}, newObj interface{}) {
 				svc := newObj.(*api.Service)
-				if svc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value {
+				if svc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value || svc.Annotations[exposestrategy.ExposeAnnotation.Key] == exposestrategy.ExposeAnnotation.Value {
 					err := strategy.Add(svc)
 					if err != nil {
 						glog.Errorf("Add failed: %v", err)
@@ -152,7 +152,7 @@ func NewController(
 					updateRelatedResources(kubeClient, oc, svc, config, authorizeURL)
 				} else {
 					oldSvc := oldObj.(*api.Service)
-					if oldSvc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value {
+					if oldSvc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value || oldSvc.Annotations[exposestrategy.ExposeAnnotation.Key] == exposestrategy.ExposeAnnotation.Value {
 						err := strategy.Remove(svc)
 						if err != nil {
 							glog.Errorf("Remove failed: %v", err)

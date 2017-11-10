@@ -11,9 +11,12 @@ kubectl create -f http://central.maven.org/maven2/io/fabric8/devops/apps/exposec
 ```
 
 ```sh
-kubectl label svc foo expose=true
+kubectl label svc foo expose=true // now deprecated
 ```
-
+or
+```sh
+kubectl annotate svc foo fabric8.io/expose=true
+```
 If you have [gofabric8](https://github.com/fabric8io/gofabric8) then
 ```sh
 gofabric8 service foo
@@ -71,8 +74,12 @@ If you're using OpenShift then you'll need to add a couple roles:
 
 Now label your service with `expose=true` in [CD Pipelines](https://blog.fabric8.io/create-and-explore-continuous-delivery-pipelines-with-fabric8-and-jenkins-on-openshift-661aa82cb45a#.lx020ys70) or with the CLI:
 
+```sh
+kubectl label svc foo expose=true // now deprecated
 ```
-kubectl label svc foo expose=true
+or
+```sh
+kubectl annotate svc foo fabric8.io/expose=true
 ```
 
 __exposecontroller__ will use your `exposer` type in the configmap above to automatically watch for new services and create ingress / routes / nodeports / loadbalacers for you.
