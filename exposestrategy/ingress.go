@@ -55,9 +55,16 @@ func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain s
 }
 
 func (s *IngressStrategy) Add(svc *api.Service) error {
-	hostName := fmt.Sprintf("%s.%s.%s", svc.Name, svc.Namespace, s.domain)
+	var appName string
+	if svc.Labels["release"] != "" {
+		appName = strings.Replace(svc.Name, svc.Labels["release"] + "-", "", 1)
+	} else {
+		appName = svc.Name
+	}
 
-	ingress, err := s.client.Ingress(svc.Namespace).Get(svc.Name)
+	hostName := fmt.Sprintf("%s.%s.%s", appName, svc.Namespace, s.domain)
+
+	ingress, err := s.client.Ingress(svc.Namespace).Get(appName)
 	createIngress := false
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -65,11 +72,11 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 			ingress = &extensions.Ingress{
 				ObjectMeta: api.ObjectMeta{
 					Namespace: svc.Namespace,
-					Name:      svc.Name,
+					Name:      appName,
 				},
 			}
 		} else {
-			return errors.Wrapf(err, "could not check for existing ingress %s/%s", svc.Namespace, svc.Name)
+			return errors.Wrapf(err, "could not check for existing ingress %s/%s", svc.Namespace, appName)
 		}
 	}
 
@@ -84,7 +91,7 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 	var tlsSecretName string
 	if s.tlsAcme {
 		ingress.Annotations["kubernetes.io/tls-acme"] = "true"
-		tlsSecretName = "tls-" + svc.Name
+		tlsSecretName = "tls-" + appName
 	}
 
 	annotationsForIngress := svc.Annotations["fabric8.io/ingress.annotations"]
@@ -175,7 +182,13 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 }
 
 func (s *IngressStrategy) Remove(svc *api.Service) error {
-	err := s.client.Ingress(svc.Namespace).Delete(svc.Name, nil)
+	var appName string
+	if svc.Labels["release"] != "" {
+		appName = strings.Replace(svc.Name, svc.Labels["release"] + "-", "", 1)
+	} else {
+		appName = svc.Name
+	}
+	err := s.client.Ingress(svc.Namespace).Delete(appName, nil)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return errors.Wrap(err, "failed to delete ingress")
 	}
