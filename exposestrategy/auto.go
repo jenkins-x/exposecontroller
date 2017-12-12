@@ -54,16 +54,16 @@ func getAutoDefaultExposeRule(c *client.Client) (string, error) {
 
 	// lets default to Ingress on kubernetes for now
 	/*
-	nodes, err := c.Nodes().List(api.ListOptions{})
-	if err != nil {
-		return "", errors.Wrap(err, "failed to find any nodes")
-	}
-	if len(nodes.Items) == 1 {
-		node := nodes.Items[0]
-		if node.Name == "minishift" || node.Name == "minikube" {
-			return nodePort, nil
+		nodes, err := c.Nodes().List(api.ListOptions{})
+		if err != nil {
+			return "", errors.Wrap(err, "failed to find any nodes")
 		}
-	}
+		if len(nodes.Items) == 1 {
+			node := nodes.Items[0]
+			if node.Name == "minishift" || node.Name == "minikube" {
+				return nodePort, nil
+			}
+		}
 	*/
 	return ingress, nil
 }

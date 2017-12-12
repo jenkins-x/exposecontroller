@@ -55,11 +55,14 @@ func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain s
 }
 
 func (s *IngressStrategy) Add(svc *api.Service) error {
-	var appName string
-	if svc.Labels["release"] != "" {
-		appName = strings.Replace(svc.Name, svc.Labels["release"] + "-", "", 1)
-	} else {
-		appName = svc.Name
+
+	appName := svc.Annotations["fabric8.io/ingress.name"]
+	if appName == "" {
+		if svc.Labels["release"] != "" {
+			appName = strings.Replace(svc.Name, svc.Labels["release"]+"-", "", 1)
+		} else {
+			appName = svc.Name
+		}
 	}
 
 	hostName := fmt.Sprintf("%s.%s.%s", appName, svc.Namespace, s.domain)
@@ -104,23 +107,44 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 		}
 	}
 
+	path := svc.Annotations["fabric8.io/ingress.path"]
+
+	backendPaths := []extensions.HTTPIngressPath{}
+	if ingress.Spec.Rules != nil {
+		backendPaths = ingress.Spec.Rules[0].HTTP.Paths
+	}
+
+	// check incase we already have this backend path listed
+	for _, path := range backendPaths {
+		if path.Backend.ServiceName == svc.Name{
+			return nil
+		}
+	}
+
 	ingress.Spec.Rules = []extensions.IngressRule{}
 	for _, port := range svc.Spec.Ports {
+
+		path := extensions.HTTPIngressPath{
+
+				Backend: extensions.IngressBackend{
+					ServiceName: svc.Name,
+					ServicePort: intstr.FromInt(int(port.Port)),
+				},
+				Path: path,
+
+		}
+
+		backendPaths = append(backendPaths, path)
+
 		rule := extensions.IngressRule{
 			Host: hostName,
 			IngressRuleValue: extensions.IngressRuleValue{
 				HTTP: &extensions.HTTPIngressRuleValue{
-					Paths: []extensions.HTTPIngressPath{
-						{
-							Backend: extensions.IngressBackend{
-								ServiceName: svc.Name,
-								ServicePort: intstr.FromInt(int(port.Port)),
-							},
-						},
-					},
+					Paths: backendPaths,
 				},
 			},
 		}
+
 		ingress.Spec.Rules = append(ingress.Spec.Rules, rule)
 
 		if !s.http {
@@ -184,7 +208,7 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 func (s *IngressStrategy) Remove(svc *api.Service) error {
 	var appName string
 	if svc.Labels["release"] != "" {
-		appName = strings.Replace(svc.Name, svc.Labels["release"] + "-", "", 1)
+		appName = strings.Replace(svc.Name, svc.Labels["release"]+"-", "", 1)
 	} else {
 		appName = svc.Name
 	}
