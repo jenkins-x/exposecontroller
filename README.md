@@ -44,6 +44,14 @@ To add a path to the ingress rule for your service add an annotation:
 kubectl annotate svc foo fabric8.io/ingress.path=/api/
 ```
 
+### Daemon mode
+
+To run a one shot exposecontroller pass the `--daemon` flag
+
+### Cleanup
+
+To remove any ingress rules created by exposecontroller use the `--cleanup` flag
+ 
 ## Configuration
 
 We use a Kubernetes ConfigMap and mutltiple config entries. Full list [here](https://github.com/fabric8io/exposecontroller/blob/master/controller/config.go#L46)
