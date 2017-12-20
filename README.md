@@ -26,6 +26,24 @@ else get the external URL from the service annotation and paste in into your bro
 ```sh
 kubectl get svc foo -o=yaml
 ```
+
+### Ingress name
+
+The ingress URL uses the service name that contains the `expose` annotation, if you want this to be a different name then annotate the service:
+```sh
+kubectl annotate svc foo fabric8.io/ingress.name=bar
+```
+
+### Multiple backend services
+
+An ingress rule can have multiple service backends, traffic is managed using a path see https://kubernetes.io/docs/concepts/services-networking/ingress/#the-ingress-resource
+
+To add a path to the ingress rule for your service add an annotation:
+
+```sh
+kubectl annotate svc foo fabric8.io/ingress.path=/api/
+```
+
 ## Configuration
 
 We use a Kubernetes ConfigMap and mutltiple config entries. Full list [here](https://github.com/fabric8io/exposecontroller/blob/master/controller/config.go#L46)

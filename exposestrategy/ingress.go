@@ -85,12 +85,14 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 
 	if ingress.Labels == nil {
 		ingress.Labels = map[string]string{}
+		ingress.Labels["provider"] = "fabric8"
 	}
-	ingress.Labels["provider"] = "fabric8"
 
 	if ingress.Annotations == nil {
 		ingress.Annotations = map[string]string{}
+		ingress.Annotations["fabric8.io/generated-by"] = "exposecontroller"
 	}
+
 	var tlsSecretName string
 	if s.tlsAcme {
 		ingress.Annotations["kubernetes.io/tls-acme"] = "true"
@@ -116,7 +118,7 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 
 	// check incase we already have this backend path listed
 	for _, path := range backendPaths {
-		if path.Backend.ServiceName == svc.Name{
+		if path.Backend.ServiceName == svc.Name {
 			return nil
 		}
 	}
@@ -126,12 +128,11 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 
 		path := extensions.HTTPIngressPath{
 
-				Backend: extensions.IngressBackend{
-					ServiceName: svc.Name,
-					ServicePort: intstr.FromInt(int(port.Port)),
-				},
-				Path: path,
-
+			Backend: extensions.IngressBackend{
+				ServiceName: svc.Name,
+				ServicePort: intstr.FromInt(int(port.Port)),
+			},
+			Path: path,
 		}
 
 		backendPaths = append(backendPaths, path)
