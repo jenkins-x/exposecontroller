@@ -134,6 +134,9 @@ func getExternalIP(node api.Node) (string, error) {
 		if fallback == "" && addr.Type == api.NodeLegacyHostIP {
 			fallback = addr.Address
 		}
+		if fallback == "" && addr.Type == api.NodeInternalIP {
+			fallback = addr.Address
+		}
 	}
 	if fallback != "" {
 		return fallback, nil
