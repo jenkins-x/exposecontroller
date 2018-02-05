@@ -433,8 +433,6 @@ func (c *ConfigYaml) UpdateConfigMap(configMap *api.ConfigMap, values map[string
 	if newValue != value {
 		configMap.Data[key] = newValue
 		return true
-	} else {
-		fmt.Printf("New value did not change: %s\n", newValue)
 	}
 	return false
 }
