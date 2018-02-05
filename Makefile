@@ -25,7 +25,7 @@ FORMATTED := $(shell $(GO) fmt $(PACKAGE_DIRS))
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 BUILD_DIR ?= ./out
-ORG := github.com/fabric8io
+ORG := github.com/jenkins-x
 REPOPATH ?= $(ORG)/exposecontroller
 ROOT_PACKAGE := $(shell go list .)
 
@@ -78,7 +78,7 @@ release: clean test cross
 	cp out/exposecontroller-*-amd64* release
 	cp out/exposecontroller-*-arm* release
 	gh-release checksums sha256
-	gh-release create fabric8io/exposecontroller $(VERSION) master v$(VERSION)
+	gh-release create jenkinsxio/exposecontroller $(VERSION) master v$(VERSION)
 
 .PHONY: cross
 cross: out/exposecontroller-linux-amd64 out/exposecontroller-darwin-amd64 out/exposecontroller-windows-amd64.exe out/exposecontroller-linux-arm
@@ -98,7 +98,7 @@ clean:
 
 .PHONY: docker
 docker: out/exposecontroller-linux-amd64
-	docker build -t "fabric8/exposecontroller:dev" .
+	docker build -t "jenkinsxio/exposecontroller:dev" .
 
 kube-redeploy: docker
 	kubectl delete pod -l project=exposecontroller-app

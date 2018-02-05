@@ -1,4 +1,4 @@
-package: github.com/fabric8io/exposecontroller
+package: github.com/jenkins-x/exposecontroller
 import:
 - package: github.com/openshift/origin
   version: v1.3.0
