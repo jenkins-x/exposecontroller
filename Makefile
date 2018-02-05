@@ -85,9 +85,9 @@ else ifeq ($(OS),Linux)
 else
 	exit -1
 endif
-    git add charts/exposecontroller/Chart.yaml
-    git add charts/exposecontroller/values.yaml
-    git commit -m "release $(RELEASE_VERSION)"
+	git add charts/exposecontroller/Chart.yaml
+	git add charts/exposecontroller/values.yaml
+	git commit -m "release $(RELEASE_VERSION)"
 	mkdir -p release
 	cp out/exposecontroller-*-amd64* release
 	cp out/exposecontroller-*-arm* release
