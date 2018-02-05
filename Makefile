@@ -51,10 +51,8 @@ fmt:
 	@([[ ! -z "$(FORMATTED)" ]] && printf "Fixed unformatted files:\n$(FORMATTED)") || true
 
 $(ORIGINAL_GOPATH)/bin/exposecontroller: out/exposecontroller-$(GOOS)-$(GOARCH)
-	cp $(BUILD_DIR)/exposecontroller-$(GOOS)-$(GOARCH) $(ORIGINAL_GOPATH)/bin/exposecontroller
 
 out/exposecontroller: out/exposecontroller-$(GOOS)-$(GOARCH) fmt
-	cp $(BUILD_DIR)/exposecontroller-$(GOOS)-$(GOARCH) $(BUILD_DIR)/exposecontroller
 
 out/exposecontroller-darwin-amd64: gopath $(shell $(GOFILES)) version/VERSION
 	CGO_ENABLED=0 GOARCH=amd64 GOOS=darwin go build $(BUILDFLAGS) -o $(BUILD_DIR)/exposecontroller-darwin-amd64 $(ROOT_PACKAGE)
@@ -85,9 +83,9 @@ else ifeq ($(OS),Linux)
 else
 	exit -1
 endif
-    git add charts/exposecontroller/Chart.yaml
-    git add charts/exposecontroller/values.yaml
-    git commit -m "release $(RELEASE_VERSION)"
+	git add charts/exposecontroller/Chart.yaml
+	git add charts/exposecontroller/values.yaml
+	git commit -m "release $(RELEASE_VERSION)"
 	mkdir -p release
 	cp out/exposecontroller-*-amd64* release
 	cp out/exposecontroller-*-arm* release

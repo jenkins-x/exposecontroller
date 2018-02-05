@@ -12,7 +12,7 @@ pipeline {
                     checkout scm
                     container('go') {
                         sh "make test"
-                        sh "./out/exposecontroller"
+                        sh "make"
                     }
                 }
                 dir ('/home/jenkins/go/src/github.com/jenkins-x/exposecontroller/charts/exposecontroller') {
