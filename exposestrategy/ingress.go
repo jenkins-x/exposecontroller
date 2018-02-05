@@ -43,8 +43,8 @@ func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain s
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to get a domain")
 		}
-		glog.Infof("Using domain: %s", domain)
 	}
+	glog.Infof("Using domain: %s", domain)
 
 	var urlformat string
 	urlformat, err = getURLFormat(urltemplate)

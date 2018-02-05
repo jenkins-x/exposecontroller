@@ -144,6 +144,31 @@ E.g. when you set an annotation on the config map `expose.config.fabric8.io/url-
 
 There is an [example](https://github.com/jenkins-x/fabric8-devops/blob/master/gogs/src/main/fabric8/gogs-cm.yml#L27) of the use of these annotations in the Gogs `ConfigMap`
 
+#### Injecting into ConfigMap entries
+
+Sometimes you have a `ConfigMap` which contains an entry that is a configuration file that needs to include an expression from the exposed URL.
+
+To do that you can add a blob of YAML in an annotation:
+
+```yaml
+metadata:
+  annotations:
+    expose.config.fabric8.io/config-yaml: |-
+      - key: app.ini
+        prefix: "DOMAIN = "
+        expression: host
+      - key: app.ini
+        prefix: "ROOT_URL = "
+        expression: url
+```
+
+##### Available expressions
+
+* `host` for the host:port of the endpoint
+* `url` for the full URL 
+* `apiserver` for the api server host/port
+* `apiserverURL` for the full api server URL
+ 
 ### OAuthClient
 
 When using OpenShift and `OAuthClient` you need to ensure your external URL is added to the `redirectURIs` property in the `OAuthClient`.

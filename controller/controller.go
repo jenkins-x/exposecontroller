@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -27,6 +28,7 @@ import (
 	oclient "github.com/openshift/origin/pkg/client"
 	oauthapi "github.com/openshift/origin/pkg/oauth/api"
 	oauthapiv1 "github.com/openshift/origin/pkg/oauth/api/v1"
+	"gopkg.in/v2/yaml"
 )
 
 const (
@@ -38,6 +40,8 @@ const (
 	ExposeConfigConsoleURLKeyAnnotation        = "expose.config.fabric8.io/console-url-key"
 	ExposeConfigApiServerProtocolKeyAnnotation = "expose.config.fabric8.io/apiserver-protocol-key"
 	ExposeConfigOAuthAuthorizeURLKeyAnnotation = "expose.config.fabric8.io/oauth-authorize-url-key"
+
+	ExposeConfigYamlAnnotation = "expose.config.fabric8.io/config-yaml"
 
 	OAuthAuthorizeUrlEnvVar = "OAUTH_AUTHORIZE_URL"
 )
@@ -265,18 +269,28 @@ func kubernetesServiceProtocol(c *client.Client) string {
 	return "https"
 }
 
+type ConfigYaml struct {
+	Key        string
+	Expression string
+	Prefix     string
+	Suffix     string
+}
+
 func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Service, config *Config, authorizeURL string) {
 	name := svc.Name
 	ns := svc.Namespace
 	cm, err := c.ConfigMaps(ns).Get(name)
+	apiserverURL := ""
+	apiserver := ""
+	apiserverProtocol := ""
 	if err == nil {
 		updated := false
-		apiserver := config.ApiServer
-		apiserverProtocol := config.ApiServerProtocol
+		apiserver = config.ApiServer
+		apiserverProtocol = config.ApiServerProtocol
 		consoleURL := config.ConsoleURL
 
 		if len(apiserver) > 0 {
-			apiserverURL := apiserverProtocol + "://" + apiserver
+			apiserverURL = apiserverProtocol + "://" + apiserver
 			apiServerKey := cm.Annotations[ExposeConfigApiServerKeyAnnotation]
 			if len(apiServerKey) > 0 {
 				if cm.Data[apiServerKey] != apiserver {
@@ -347,6 +361,31 @@ func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Servi
 					updated = true
 				}
 			}
+
+			configYaml := svc.Annotations[ExposeConfigYamlAnnotation]
+			if configYaml != "" {
+				fmt.Printf("Procssing ConfigYaml on service %s\n", svc.Name)
+				configs := []ConfigYaml{}
+				err := yaml.Unmarshal([]byte(configYaml), &configs)
+				if err != nil {
+					glog.Errorf("Failed to unmarshal Config YAML on service %s due to %s : YAML: %s", svc.Name, err, configYaml)
+				} else {
+					values := map[string]string{
+						"host":              host,
+						"url":               exposeURL,
+						"apiserver":         apiserver,
+						"apiserverURL":      apiserverURL,
+						"apiserverProtocol": apiserverProtocol,
+						"consoleURL":        consoleURL,
+					}
+					fmt.Printf("Loading ConfigYaml configurations %#v\n", configs)
+					for _, c := range configs {
+						if c.UpdateConfigMap(cm, values) {
+							updated = true
+						}
+					}
+				}
+			}
 		}
 		if updated {
 			glog.Infof("Updating ConfigMap %s/%s", ns, name)
@@ -356,6 +395,42 @@ func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Servi
 			}
 		}
 	}
+}
+
+func (c *ConfigYaml) UpdateConfigMap(configMap *api.ConfigMap, values map[string]string) bool {
+	key := c.Key
+	if key == "" {
+		glog.Warningf("No key in ConfigYaml settings %#v\n", configMap.Name, key, c)
+		return false
+	}
+	expValue := values[c.Expression]
+	if expValue == "" {
+		glog.Warningf("Could not calculate expression %s from the ConfigYaml settings %#v possible values are %v\n", c.Expression, c, values)
+		return false
+	}
+	value := configMap.Data[key]
+	if value == "" {
+		glog.Warningf("ConfigMap %s does not have a key %s when trying to apply the ConfigYaml settings %#v\n", configMap.Name, key, c)
+		return false
+	}
+	lines := strings.Split(value, "\n")
+	var buffer bytes.Buffer
+	for _, line := range lines {
+		if strings.HasPrefix(line, c.Prefix) {
+			buffer.WriteString(c.Prefix + expValue + c.Suffix)
+		} else {
+			buffer.WriteString(line)
+		}
+		buffer.WriteString("\n")
+	}
+	newValue := buffer.String()
+	if newValue != value {
+		configMap.Data[key] = newValue
+		return true
+	} else {
+		fmt.Printf("New value did not change: %s\n", newValue)
+	}
+	return false
 }
 
 func urlJoin(s1 string, s2 string) string {
