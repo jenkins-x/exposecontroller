@@ -15,8 +15,8 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	kubectlutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 
-	"github.com/fabric8io/exposecontroller/controller"
-	"github.com/fabric8io/exposecontroller/version"
+	"github.com/jenkins-x/exposecontroller/controller"
+	"github.com/jenkins-x/exposecontroller/version"
 )
 
 const (

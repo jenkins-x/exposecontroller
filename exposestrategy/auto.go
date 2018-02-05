@@ -112,7 +112,7 @@ func getAutoDefaultDomain(c *client.Client) (string, error) {
 			}
 		}
 	}
-	return "", errors.New("no known automatic ways to get an external ip to use with nip.  Please configure exposecontroller configmap manually see https://github.com/fabric8io/exposecontroller#configuration")
+	return "", errors.New("no known automatic ways to get an external ip to use with nip.  Please configure exposecontroller configmap manually see https://github.com/jenkins-x/exposecontroller#configuration")
 }
 
 // copied from k8s.io/kubernetes/pkg/master/master.go
@@ -132,6 +132,9 @@ func getExternalIP(node api.Node) (string, error) {
 			return addr.Address, nil
 		}
 		if fallback == "" && addr.Type == api.NodeLegacyHostIP {
+			fallback = addr.Address
+		}
+		if fallback == "" && addr.Type == api.NodeInternalIP {
 			fallback = addr.Address
 		}
 	}

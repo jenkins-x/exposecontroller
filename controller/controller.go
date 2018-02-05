@@ -22,7 +22,7 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/watch"
 
-	"github.com/fabric8io/exposecontroller/exposestrategy"
+	"github.com/jenkins-x/exposecontroller/exposestrategy"
 
 	oclient "github.com/openshift/origin/pkg/client"
 	oauthapi "github.com/openshift/origin/pkg/oauth/api"
