@@ -74,11 +74,26 @@ test: gopath
 
 .PHONY: release
 release: clean test cross
+
+ifeq ($(OS),Darwin)
+	sed -i "" -e "s/version:.*/version: $(RELEASE_VERSION)/" charts/exposecontroller/Chart.yaml
+	sed -i "" -e "s/ImageTag:.*/ImageTag: $(RELEASE_VERSION)/" charts/exposecontroller/values.yaml
+
+else ifeq ($(OS),Linux)
+	sed -i -e "s/version:.*/version: $(RELEASE_VERSION)/" charts/exposecontroller/Chart.yaml
+	sed -i -e "s/ImageTag:.*/ImageTag: $(RELEASE_VERSION)/" charts/exposecontroller/values.yaml
+else
+	exit -1
+endif
+    git add charts/exposecontroller/Chart.yaml
+    git add charts/exposecontroller/values.yaml
+    git commit -m "release $(RELEASE_VERSION)"
 	mkdir -p release
 	cp out/exposecontroller-*-amd64* release
 	cp out/exposecontroller-*-arm* release
 	gh-release checksums sha256
 	gh-release create jenkinsxio/exposecontroller $(VERSION) master v$(VERSION)
+
 
 .PHONY: cross
 cross: out/exposecontroller-linux-amd64 out/exposecontroller-darwin-amd64 out/exposecontroller-windows-amd64.exe out/exposecontroller-linux-arm
