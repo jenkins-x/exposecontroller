@@ -44,6 +44,8 @@ const (
 	ExposeConfigYamlAnnotation = "expose.config.fabric8.io/config-yaml"
 
 	OAuthAuthorizeUrlEnvVar = "OAUTH_AUTHORIZE_URL"
+
+	updateOnChangeAnnotation = "configmap.fabric8.io/update-on-change"
 )
 
 type Controller struct {
@@ -392,6 +394,10 @@ func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Servi
 			_, err = c.ConfigMaps(ns).Update(cm)
 			if err != nil {
 				glog.Errorf("Failed to update ConfigMap %s error: %v", name, err)
+			}
+			err = rollingUpgradeDeployments(cm, c)
+			if err != nil {
+				glog.Errorf("Failed to update Deployments after change to ConfigMap %s error: %v", name, err)
 			}
 		}
 	}
