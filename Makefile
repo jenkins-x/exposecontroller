@@ -86,7 +86,7 @@ else
 endif
 	git add charts/exposecontroller/Chart.yaml
 	git add charts/exposecontroller/values.yaml
-	git commit -m "release $(VERSION)"
+	git commit -m "release $(VERSION)" --allow-empty
 	mkdir -p release
 	cp out/exposecontroller-*-amd64* release
 	cp out/exposecontroller-*-arm* release
