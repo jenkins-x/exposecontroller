@@ -46,17 +46,8 @@ pipeline {
                 }
                 dir ('/home/jenkins/exposecontroller') {
                     checkout scm
-                    container('jx-base') {
-                        // ensure we're not on a detached head
-                        sh "git checkout master"
-
-                        // until we switch to the new kubernetes / jenkins credential implementation use git credentials store
-                        sh "git config credential.helper store"
-
-                        sh "git checkout master"
+                    container('go') {
                         sh "helm init --client-only"
-
-
                         sh "make release"
                     }
                 }
