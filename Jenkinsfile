@@ -45,7 +45,6 @@ pipeline {
                     }
                 }
                 dir ('/home/jenkins/go/src/github.com/jenkins-x/exposecontroller/charts/exposecontroller') {
-                    checkout scm
                     container('go') {
                         sh "helm init --client-only"
                         sh "make release"
