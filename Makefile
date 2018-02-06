@@ -13,7 +13,8 @@
 # limitations under the License.
 
 GO := GO15VENDOREXPERIMENT=1 go
-VERSION ?= $(shell cat version/VERSION)
+VERSION := $(shell cat version/VERSION)
+OS := $(shell uname)
 REVISION=$(shell git rev-parse --short HEAD 2> /dev/null || echo 'unknown')
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD 2> /dev/null || echo 'unknown')
 HOST=$(shell hostname -f)
@@ -74,18 +75,18 @@ test: gopath out/exposecontroller
 release: clean test cross
 
 ifeq ($(OS),Darwin)
-	sed -i "" -e "s/version:.*/version: $(RELEASE_VERSION)/" charts/exposecontroller/Chart.yaml
-	sed -i "" -e "s/ImageTag:.*/ImageTag: $(RELEASE_VERSION)/" charts/exposecontroller/values.yaml
+	sed -i "" -e "s/version:.*/version: $(VERSION)/" charts/exposecontroller/Chart.yaml
+	sed -i "" -e "s/ImageTag:.*/ImageTag: $(VERSION)/" charts/exposecontroller/values.yaml
 
 else ifeq ($(OS),Linux)
-	sed -i -e "s/version:.*/version: $(RELEASE_VERSION)/" charts/exposecontroller/Chart.yaml
-	sed -i -e "s/ImageTag:.*/ImageTag: $(RELEASE_VERSION)/" charts/exposecontroller/values.yaml
+	sed -i -e "s/version:.*/version: $(VERSION)/" charts/exposecontroller/Chart.yaml
+	sed -i -e "s/ImageTag:.*/ImageTag: $(VERSION)/" charts/exposecontroller/values.yaml
 else
 	exit -1
 endif
 	git add charts/exposecontroller/Chart.yaml
 	git add charts/exposecontroller/values.yaml
-	git commit -m "release $(RELEASE_VERSION)"
+	git commit -m "release $(VERSION)"
 	mkdir -p release
 	cp out/exposecontroller-*-amd64* release
 	cp out/exposecontroller-*-arm* release
