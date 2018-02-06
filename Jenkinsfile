@@ -29,6 +29,7 @@ pipeline {
         stage('Build and Release') {
             environment {
                 GH_CREDS = credentials('jenkins-x-github')
+                CHARTMUSEUM_CREDS = credentials('jenkins-x-chartmuseum')
             }
             when {
                 branch 'master'

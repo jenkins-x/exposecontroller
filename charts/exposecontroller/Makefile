@@ -1,7 +1,7 @@
 CHART_REPO := http://jenkins-x-chartmuseum:8080
 NAME := exposecontroller
 OS := $(shell uname)
-RELEASE_VERSION := $(cat ../../version/VERSION)
+VERSION := $(shell cat ../../version/VERSION)
 
 setup:
 	minikube addons enable ingress
@@ -30,5 +30,5 @@ clean:
 
 release: clean build
 	helm package .
-	curl --data-binary "@$(NAME)-$(RELEASE_VERSION).tgz" $(CHART_REPO)/api/charts
+	curl --fail -u $(CHARTMUSEUM_CREDS_USR):$(CHARTMUSEUM_CREDS_PSW) --data-binary "@$(NAME)-$(VERSION).tgz" $(CHART_REPO)/api/charts
 	rm -rf ${NAME}*.tgz
