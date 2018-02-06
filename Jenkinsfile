@@ -44,7 +44,7 @@ pipeline {
                         sh "GITHUB_ACCESS_TOKEN=$GH_CREDS_PSW make release"
                     }
                 }
-                dir ('/home/jenkins/exposecontroller') {
+                dir ('/home/jenkins/go/src/github.com/jenkins-x/exposecontroller') {
                     checkout scm
                     container('go') {
                         sh "helm init --client-only"
