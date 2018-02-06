@@ -67,7 +67,7 @@ out/exposecontroller-linux-arm: gopath $(shell $(GOFILES)) version/VERSION
 	CGO_ENABLED=0 GOARCH=arm GOOS=linux go build $(BUILDFLAGS) -o $(BUILD_DIR)/exposecontroller-linux-arm $(ROOT_PACKAGE)
 
 .PHONY: test
-test: gopath
+test: gopath out/exposecontroller
 	go test -v $(GOPACKAGES)
 
 .PHONY: release
