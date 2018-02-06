@@ -91,7 +91,7 @@ endif
 	cp out/exposecontroller-*-amd64* release
 	cp out/exposecontroller-*-arm* release
 	gh-release checksums sha256
-	gh-release create jenkinsxio/exposecontroller $(VERSION) master v$(VERSION)
+	gh-release create jenkins-x/exposecontroller $(VERSION) master v$(VERSION)
 
 
 .PHONY: cross
