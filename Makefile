@@ -72,7 +72,7 @@ test: gopath out/exposecontroller
 	go test -v $(GOPACKAGES)
 
 .PHONY: release
-release: clean test cross
+release: clean test cross docker-release
 
 ifeq ($(OS),Darwin)
 	sed -i "" -e "s/version:.*/version: $(VERSION)/" charts/exposecontroller/Chart.yaml
@@ -113,6 +113,13 @@ clean:
 .PHONY: docker
 docker: out/exposecontroller-linux-amd64
 	docker build -t "jenkinsxio/exposecontroller:dev" .
+
+.PHONY: docker-release
+docker-release: out/exposecontroller-linux-amd64
+	docker build -t docker.io/jenkinsxio/exposecontroller:${VERSION} .
+	docker tag docker.io/jenkinsxio/exposecontroller:${VERSION} docker.io/jenkinsxio/exposecontroller:latest
+	docker push docker.io/jenkinsxio/exposecontroller:${VERSION}
+	docker push docker.io/jenkinsxio/exposecontroller:latest
 
 kube-redeploy: docker
 	kubectl delete pod -l project=exposecontroller-app
