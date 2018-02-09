@@ -1,17 +1,17 @@
 apiVersion: "v1"
-data:
-  config.yml: |-
-    domain: 
-    exposer: 
-    # exposer: LoadBalancer
-    # exposer: Ingress
-    # exposer: Route
-    # exposer: NodePort
-    # For ingress; exposers can set the urltemplate to expose
-    # urltemplate: "{{.Service}}.{{.Namespace}}.{{.Domain}}"     
 kind: "ConfigMap"
 metadata:
   labels:
     provider: "fabric8"
     project: "exposecontroller"
   name: "exposecontroller"
+data:
+  config.yml: |-
+    domain: 192.168.64.18.nip.ip
+    exposer: Ingress
+    # exposer: LoadBalancer
+    # exposer: Ingress
+    # exposer: Route
+    # exposer: NodePort
+    # For ingress; exposers can set the urltemplate to expose
+    # urltemplate: "{{.Service}}.{{.Namespace}}.{{.Domain}}"     
