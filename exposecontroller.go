@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/golang/glog"
 	"github.com/jenkins-x/exposecontroller/controller"
 	"github.com/jenkins-x/exposecontroller/version"
-	"github.com/golang/glog"
 	"github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
 	kubectlutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -62,15 +62,42 @@ func main() {
 	if err != nil {
 		glog.Fatalf("failed to create client: %s", err)
 	}
+	currentNamespace := os.Getenv("KUBERNETES_NAMESPACE")
+	if len(currentNamespace) == 0 {
+		currentNamespace, _, err = factory.DefaultNamespace()
+		if err != nil {
+			glog.Fatalf("Could not find the current namespace: %v", err)
+		}
+	}
 
 	restClientConfig, err := factory.ClientConfig()
 	if err != nil {
 		glog.Fatalf("failed to create REST client config: %s", err)
 	}
 
-	controllerConfig, err := controller.LoadFile(*configFile)
-	if err != nil {
-		glog.Fatalf("%s", err)
+	controllerConfig, exists, err := controller.LoadFile(*configFile)
+	if !exists || err != nil {
+		glog.Warningf("%s", err)
+
+		ns := currentNamespace
+		// TODO allow this name to be passed in?
+		cm, err := kubeClient.ConfigMaps(ns).Get("exposecontroller")
+		if err == nil {
+			glog.Infof("Using ConfigMapo exposecontroller to load configuration...")
+			// TODO we could allow the config to be passed in via key/value pairs?
+			text := cm.Data["config.yml"]
+			if text != "" {
+				controllerConfig, err = controller.Load(text)
+				if err != nil {
+					glog.Warningf("Could not parse the config text from exposecontroller ConfigMap  %v", err)
+				}
+				glog.Infof("Loaded ConfigMap exposecontroller to load configuration!")
+			}
+		} else {
+			glog.Warningf("Could not find ConfigMap exposecontroller in namespace %s", ns)
+		}
+	} else {
+		glog.Infof("Loaded config file %s", *configFile)
 	}
 
 	if *domain != "" {
@@ -99,13 +126,6 @@ func main() {
 	//watchNamespaces := api.NamespaceAll
 	watchNamespaces := controllerConfig.WatchNamespaces
 	if controllerConfig.WatchCurrentNamespace {
-		currentNamespace := os.Getenv("KUBERNETES_NAMESPACE")
-		if len(currentNamespace) == 0 {
-			currentNamespace, _, err = factory.DefaultNamespace()
-			if err != nil {
-				glog.Fatalf("Could not find the current namespace: %v", err)
-			}
-		}
 		if len(currentNamespace) == 0 {
 			glog.Fatalf("No current namespace found!")
 		}

@@ -10,21 +10,23 @@ import (
 	"gopkg.in/v2/yaml"
 )
 
-func LoadFile(path string) (*Config, error) {
+func LoadFile(path string) (*Config, bool, error) {
 	content, err := ioutil.ReadFile(path)
 
+	exists := true
 	if err != nil {
+		exists = false
 		if !os.IsNotExist(err) {
-			return nil, errors.Wrap(err, "failed to read config file")
+			return nil, exists, errors.Wrap(err, "failed to read config file")
 		}
 		glog.Infof("No %s file found.  Will try to figure out defaults", path)
 	}
 
 	c, err := Load(string(content))
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read config file")
+		return nil, false, errors.Wrap(err, "failed to read config file")
 	}
-	return c, nil
+	return c, exists, nil
 }
 
 func Load(s string) (*Config, error) {
