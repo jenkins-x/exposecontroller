@@ -17,8 +17,8 @@ Annotations: {}
 #     helm.sh/hook-delete-policy: hook-succeeded
 #   args: [--cleanup]
 
-# config:
-#   exposer: Ingress
+config:
+ exposer: Ingress
+ http: true
+ tlsacme: false
 #   domain:
-#   http:
-#   tlsacme:
