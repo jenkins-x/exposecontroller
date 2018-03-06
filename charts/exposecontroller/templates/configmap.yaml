@@ -9,9 +9,9 @@ data:
     domain: {{ .Values.config.domain }}
 {{- end }}
 {{- if .Values.config.http }}
-    http: {{ .Values.config.http  }}
+    http: {{ .Values.config.http | quote }}
 {{- end }}
-{{- if .Values.config.tlsacme }}
+{{- if .Values.config.tlsacme | quote }}
     tls-acme: {{ .Values.config.tlsacme  }}
 {{- end }}
 kind: ConfigMap
