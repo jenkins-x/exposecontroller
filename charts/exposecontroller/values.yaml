@@ -1,17 +1,15 @@
 Image: "jenkinsxio/exposecontroller"
 ImageTag: "dev"
+BackoffLimit: 5
 Annotations: {}
 # Args:
 #   - --help
 
 # To use exposecontroller you probably want to enable it in helm hooks, here's an example values.yaml:
 
-# expose:
-#   annotations:
-#     helm.sh/hook: post-install
-#     helm.sh/hook-delete-policy: hook-succeeded
-#   # add custom domain here else defaults to using nip.io if a single node cluster
-#   args: [--domain, "", --exposer, "Ingress", --http, "true"]
+# annotations:
+#   helm.sh/hook: post-install
+#   helm.sh/hook-delete-policy: hook-succeeded
 
 # cleanup:
 #   annotations:
