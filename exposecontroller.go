@@ -99,6 +99,7 @@ func main() {
 	} else {
 		glog.Infof("Loaded config file %s", *configFile)
 	}
+	glog.Infof("Config file before overrides %s", controllerConfig.String())
 
 	if *domain != "" {
 		controllerConfig.Domain = *domain
@@ -115,6 +116,7 @@ func main() {
 	if *httpb {
 		controllerConfig.HTTP = *httpb
 	}
+
 	if *watchCurrentNamespace {
 		controllerConfig.WatchCurrentNamespace = *watchCurrentNamespace
 	}
@@ -122,6 +124,8 @@ func main() {
 		controllerConfig.WatchNamespaces = *watchNamespaces
 		controllerConfig.WatchCurrentNamespace = false
 	}
+
+	glog.Infof("Config file after overrides %s", controllerConfig.String())
 
 	//watchNamespaces := api.NamespaceAll
 	watchNamespaces := controllerConfig.WatchNamespaces
