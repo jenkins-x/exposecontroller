@@ -8,8 +8,8 @@ data:
 {{- if .Values.config.domain }}
     domain: {{ .Values.config.domain }}
 {{- end }}
-    http: {{ .Values.config.http | quote }}
-    tls-acme: {{ .Values.config.tlsacme | quote  }}
+    http: {{ .Values.config.http | default true | quote }}
+    tls-acme: {{ .Values.config.tlsacme | default false | quote  }}
 kind: ConfigMap
 metadata:
   name: exposecontroller
