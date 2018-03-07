@@ -13,7 +13,7 @@ metadata:
 {{ toYaml .Values.Annotations | indent 4 }}
 {{- end }}
 spec:
-  backoffLimit: {{ .Values.BackoffLimit }}
+  # backoffLimit: {{ .Values.BackoffLimit }}
   template:
     metadata:
       name: "{{.Release.Name}}"
