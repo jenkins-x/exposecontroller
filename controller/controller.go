@@ -70,6 +70,8 @@ func NewController(
 	eventBroadcaster.StartLogging(glog.Infof)
 	eventBroadcaster.StartRecordingToSink(kubeClient.Events(namespace))
 
+	glog.Infof("NewController %v", config.HTTP)
+
 	c := Controller{
 		client: kubeClient,
 		stopCh: make(chan struct{}),

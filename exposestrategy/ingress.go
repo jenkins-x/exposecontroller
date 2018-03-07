@@ -30,6 +30,7 @@ type IngressStrategy struct {
 var _ ExposeStrategy = &IngressStrategy{}
 
 func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain string, http, tlsAcme bool, urltemplate string) (*IngressStrategy, error) {
+	glog.Infof("NewIngressStrategy 1 %v", http)
 	t, err := typeOfMaster(client)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not create new ingress strategy")
@@ -64,7 +65,7 @@ func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain s
 }
 
 func (s *IngressStrategy) Add(svc *api.Service) error {
-
+	glog.Infof("Add 1 %v", s.http)
 	appName := svc.Annotations["fabric8.io/ingress.name"]
 	if appName == "" {
 		if svc.Labels["release"] != "" {

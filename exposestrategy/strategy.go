@@ -3,6 +3,7 @@ package exposestrategy
 import (
 	"strings"
 
+	"github.com/golang/glog"
 	"github.com/pkg/errors"
 
 	oclient "github.com/openshift/origin/pkg/client"
@@ -44,6 +45,7 @@ func New(exposer, domain, urltemplate, nodeIP, routeHost string, routeUsePath, h
 		}
 		return strategy, nil
 	case "ingress":
+		glog.Infof("stratagy.New %v", http)
 		strategy, err := NewIngressStrategy(client, encoder, domain, http, tlsAcme, urltemplate)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create ingress expose strategy")
