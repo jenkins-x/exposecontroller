@@ -54,7 +54,7 @@ To remove any ingress rules created by exposecontroller use the `--cleanup` flag
  
 ## Configuration
 
-We use a Kubernetes ConfigMap and mutltiple config entries. Full list [here](https://github.com/fabric8io/exposecontroller/blob/master/controller/config.go#L46)
+We use a Kubernetes ConfigMap and mutltiple config entries. Full list [here](https://github.com/jenkins-x/exposecontroller/blob/master/controller/config.go#L46)
 
   - `domain` when using either Kubernetes Ingress or OpenShift Routes you will need to set the domain that you've used with your DNS provider (fabric8 uses [cloudflare](https://www.cloudflare.com)) or nip.io if you want a quick way to get running.
   - `exposer` used to describe which strategy exposecontroller should use to access applications
@@ -120,7 +120,7 @@ Having an external URL is extremely useful. Here are some other uses of the expo
 
 Sometimes web applications need to know their external URL so that they can use that link or host/port when generating documentation or links.
 
-For example the [Gogs application](https://github.com/fabric8io/fabric8-devops/tree/master/gogs) needs to know its external URL so that it can show the user how to do a git clone from the command line.
+For example the [Gogs application](https://github.com/jenkins-x/fabric8-devops/tree/master/gogs) needs to know its external URL so that it can show the user how to do a git clone from the command line.
 
 If you wish to enable injection of the expose URL into a `ConfigMap` then 
 
@@ -142,8 +142,33 @@ If you wish to enable injection of the expose URL into a `ConfigMap` then
 
 E.g. when you set an annotation on the config map `expose.config.fabric8.io/url-key: service.url` then an entry to this config map will be added with the key `service.url` and the value of the exposed service URL when a service of the same name as this configmap gets exposed. 
 
-There is an [example](https://github.com/fabric8io/fabric8-devops/blob/master/gogs/src/main/fabric8/gogs-cm.yml#L27) of the use of these annotations in the Gogs `ConfigMap`
+There is an [example](https://github.com/jenkins-x/fabric8-devops/blob/master/gogs/src/main/fabric8/gogs-cm.yml#L27) of the use of these annotations in the Gogs `ConfigMap`
 
+#### Injecting into ConfigMap entries
+
+Sometimes you have a `ConfigMap` which contains an entry that is a configuration file that needs to include an expression from the exposed URL.
+
+To do that you can add a blob of YAML in an annotation:
+
+```yaml
+metadata:
+  annotations:
+    expose.config.fabric8.io/config-yaml: |-
+      - key: app.ini
+        prefix: "DOMAIN = "
+        expression: host
+      - key: app.ini
+        prefix: "ROOT_URL = "
+        expression: url
+```
+
+##### Available expressions
+
+* `host` for the host:port of the endpoint
+* `url` for the full URL 
+* `apiserver` for the api server host/port
+* `apiserverURL` for the full api server URL
+ 
 ### OAuthClient
 
 When using OpenShift and `OAuthClient` you need to ensure your external URL is added to the `redirectURIs` property in the `OAuthClient`.
@@ -157,8 +182,8 @@ If you create your `OAuthClient` in the same namespace with the same name as you
  * when using minikube or minishift expose the docker daemon to build the __exposecontroller__ image and run inside kubernetes.  e.g  `eval $(minikube docker-env)`
 
 ```
-git clone git://github.com/fabric8io/exposecontroller.git $GOPATH/src/github.com/fabric8io/exposecontroller
-cd $GOPATH/src/github.com/fabric8io/exposecontroller
+git clone git://github.com/jenkins-x/exposecontroller.git $GOPATH/src/github.com/jenkins-x/exposecontroller
+cd $GOPATH/src/github.com/jenkins-x/exposecontroller
 
 make
 ```

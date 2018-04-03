@@ -1,0 +1,18 @@
+Image: "jenkinsxio/exposecontroller"
+ImageTag: "dev"
+BackoffLimit: 5
+Annotations: {}
+# Args:
+#   - --help
+
+# To use exposecontroller you probably want to enable it in helm hooks, here's an example values.yaml:
+
+# annotations:
+#   helm.sh/hook: post-install
+#   helm.sh/hook-delete-policy: hook-succeeded
+
+# cleanup:
+#   annotations:
+#     helm.sh/hook: pre-delete
+#     helm.sh/hook-delete-policy: hook-succeeded
+#   args: [--cleanup]

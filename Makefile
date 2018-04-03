@@ -13,7 +13,8 @@
 # limitations under the License.
 
 GO := GO15VENDOREXPERIMENT=1 go
-VERSION ?= $(shell cat version/VERSION)
+VERSION := $(shell cat version/VERSION)
+OS := $(shell uname)
 REVISION=$(shell git rev-parse --short HEAD 2> /dev/null || echo 'unknown')
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD 2> /dev/null || echo 'unknown')
 HOST=$(shell hostname -f)
@@ -25,7 +26,7 @@ FORMATTED := $(shell $(GO) fmt $(PACKAGE_DIRS))
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 BUILD_DIR ?= ./out
-ORG := github.com/fabric8io
+ORG := github.com/jenkins-x
 REPOPATH ?= $(ORG)/exposecontroller
 ROOT_PACKAGE := $(shell go list .)
 
@@ -51,10 +52,8 @@ fmt:
 	@([[ ! -z "$(FORMATTED)" ]] && printf "Fixed unformatted files:\n$(FORMATTED)") || true
 
 $(ORIGINAL_GOPATH)/bin/exposecontroller: out/exposecontroller-$(GOOS)-$(GOARCH)
-	cp $(BUILD_DIR)/exposecontroller-$(GOOS)-$(GOARCH) $(ORIGINAL_GOPATH)/bin/exposecontroller
 
 out/exposecontroller: out/exposecontroller-$(GOOS)-$(GOARCH) fmt
-	cp $(BUILD_DIR)/exposecontroller-$(GOOS)-$(GOARCH) $(BUILD_DIR)/exposecontroller
 
 out/exposecontroller-darwin-amd64: gopath $(shell $(GOFILES)) version/VERSION
 	CGO_ENABLED=0 GOARCH=amd64 GOOS=darwin go build $(BUILDFLAGS) -o $(BUILD_DIR)/exposecontroller-darwin-amd64 $(ROOT_PACKAGE)
@@ -69,16 +68,31 @@ out/exposecontroller-linux-arm: gopath $(shell $(GOFILES)) version/VERSION
 	CGO_ENABLED=0 GOARCH=arm GOOS=linux go build $(BUILDFLAGS) -o $(BUILD_DIR)/exposecontroller-linux-arm $(ROOT_PACKAGE)
 
 .PHONY: test
-test: gopath
+test: gopath out/exposecontroller
 	go test -v $(GOPACKAGES)
 
 .PHONY: release
-release: clean test cross
+release: clean test cross docker-release
+
+ifeq ($(OS),Darwin)
+	sed -i "" -e "s/version:.*/version: $(VERSION)/" charts/exposecontroller/Chart.yaml
+	sed -i "" -e "s/ImageTag:.*/ImageTag: $(VERSION)/" charts/exposecontroller/values.yaml
+
+else ifeq ($(OS),Linux)
+	sed -i -e "s/version:.*/version: $(VERSION)/" charts/exposecontroller/Chart.yaml
+	sed -i -e "s/ImageTag:.*/ImageTag: $(VERSION)/" charts/exposecontroller/values.yaml
+else
+	exit -1
+endif
+	git add charts/exposecontroller/Chart.yaml
+	git add charts/exposecontroller/values.yaml
+	git commit -m "release $(VERSION)" --allow-empty
 	mkdir -p release
 	cp out/exposecontroller-*-amd64* release
 	cp out/exposecontroller-*-arm* release
 	gh-release checksums sha256
-	gh-release create fabric8io/exposecontroller $(VERSION) master v$(VERSION)
+	gh-release create jenkins-x/exposecontroller $(VERSION) master v$(VERSION)
+
 
 .PHONY: cross
 cross: out/exposecontroller-linux-amd64 out/exposecontroller-darwin-amd64 out/exposecontroller-windows-amd64.exe out/exposecontroller-linux-arm
@@ -98,7 +112,14 @@ clean:
 
 .PHONY: docker
 docker: out/exposecontroller-linux-amd64
-	docker build -t "fabric8/exposecontroller:dev" .
+	docker build -t "jenkinsxio/exposecontroller:dev" .
+
+.PHONY: docker-release
+docker-release: out/exposecontroller-linux-amd64
+	docker build -t docker.io/jenkinsxio/exposecontroller:${VERSION} .
+	docker tag docker.io/jenkinsxio/exposecontroller:${VERSION} docker.io/jenkinsxio/exposecontroller:latest
+	docker push docker.io/jenkinsxio/exposecontroller:${VERSION}
+	docker push docker.io/jenkinsxio/exposecontroller:latest
 
 kube-redeploy: docker
 	kubectl delete pod -l project=exposecontroller-app
