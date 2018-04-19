@@ -36,3 +36,18 @@ rules:
   - watch
   - patch
   - update
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: Role
+metadata:
+  name: {{ .Chart.Name }}
+  # This only grants permissions within the current namespace.
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - list
+      - get
