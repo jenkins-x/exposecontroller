@@ -128,6 +128,9 @@ If you wish to enable injection of the expose URL into a `ConfigMap` then
 * Add the following annotations to this `ConfigMap` for inserting automatically values into this map when the service gets exposed. The values of these annotations are used as keys in this config map.
   - `expose.config.fabric8.io/url-key` : Exposed URL
   - `expose.config.fabric8.io/host-key` : host or host + port when port is not equal 80 (e.g. `host:port`) 
+  - `expose.config.fabric8.io/clusterip-key` : Cluster IP for the service for this ConfigMap 
+  - `expose.config.fabric8.io/clusterip-port-key` : Cluster IP + port for the service for this ConfigMap 
+  - `expose.config.fabric8.io/clusterip-port-key-if-empty-key` : Cluster IP + port for the service for this ConfigMap if the value is empty
   - `expose.config.fabric8.io/apiserver-key` : Kubernetes / OpenShift API server host and port (format `host:port`)
   - `expose.config.fabric8.io/apiserver-url-key` : Kubernetes / OpenShift API server URL (format `https://host:port`)
   - `expose.config.fabric8.io/apiserver-protocol-key` : Kubernetes / OpenShift API server protocol (either http or https)

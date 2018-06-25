@@ -83,7 +83,7 @@ func main() {
 		// TODO allow this name to be passed in?
 		cm, err := kubeClient.ConfigMaps(ns).Get("exposecontroller")
 		if err == nil {
-			glog.Infof("Using ConfigMapo exposecontroller to load configuration...")
+			glog.Infof("Using ConfigMap exposecontroller to load configuration...")
 			// TODO we could allow the config to be passed in via key/value pairs?
 			text := cm.Data["config.yml"]
 			if text != "" {
