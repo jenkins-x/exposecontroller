@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,14 +33,17 @@ import (
 )
 
 const (
-	ExposeConfigURLProtocol                    = "expose.config.fabric8.io/url-protocol"
-	ExposeConfigURLKeyAnnotation               = "expose.config.fabric8.io/url-key"
-	ExposeConfigHostKeyAnnotation              = "expose.config.fabric8.io/host-key"
-	ExposeConfigApiServerKeyAnnotation         = "expose.config.fabric8.io/apiserver-key"
-	ExposeConfigApiServerURLKeyAnnotation      = "expose.config.fabric8.io/apiserver-url-key"
-	ExposeConfigConsoleURLKeyAnnotation        = "expose.config.fabric8.io/console-url-key"
-	ExposeConfigApiServerProtocolKeyAnnotation = "expose.config.fabric8.io/apiserver-protocol-key"
-	ExposeConfigOAuthAuthorizeURLKeyAnnotation = "expose.config.fabric8.io/oauth-authorize-url-key"
+	ExposeConfigURLProtocol                       = "expose.config.fabric8.io/url-protocol"
+	ExposeConfigURLKeyAnnotation                  = "expose.config.fabric8.io/url-key"
+	ExposeConfigHostKeyAnnotation                 = "expose.config.fabric8.io/host-key"
+	ExposeConfigClusterIPKeyAnnotation            = "expose.config.fabric8.io/clusterip-key"
+	ExposeConfigClusterIPPortKeyAnnotation        = "expose.config.fabric8.io/clusterip-port-key"
+	ExposeConfigClusterIPPortIfEmptyKeyAnnotation = "expose.config.fabric8.io/clusterip-port-if-empty-key"
+	ExposeConfigApiServerKeyAnnotation            = "expose.config.fabric8.io/apiserver-key"
+	ExposeConfigApiServerURLKeyAnnotation         = "expose.config.fabric8.io/apiserver-url-key"
+	ExposeConfigConsoleURLKeyAnnotation           = "expose.config.fabric8.io/console-url-key"
+	ExposeConfigApiServerProtocolKeyAnnotation    = "expose.config.fabric8.io/apiserver-protocol-key"
+	ExposeConfigOAuthAuthorizeURLKeyAnnotation    = "expose.config.fabric8.io/oauth-authorize-url-key"
 
 	ExposeConfigYamlAnnotation = "expose.config.fabric8.io/config-yaml"
 
@@ -142,7 +146,9 @@ func NewController(
 		framework.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
 				svc := obj.(*api.Service)
-				if svc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value || svc.Annotations[exposestrategy.ExposeAnnotation.Key] == exposestrategy.ExposeAnnotation.Value {
+				if svc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value ||
+					svc.Annotations[exposestrategy.ExposeAnnotation.Key] == exposestrategy.ExposeAnnotation.Value ||
+					svc.Annotations[exposestrategy.InjectAnnotation.Key] == exposestrategy.InjectAnnotation.Value {
 					err := strategy.Add(svc)
 					if err != nil {
 						glog.Errorf("Add failed: %v", err)
@@ -152,7 +158,9 @@ func NewController(
 			},
 			UpdateFunc: func(oldObj interface{}, newObj interface{}) {
 				svc := newObj.(*api.Service)
-				if svc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value || svc.Annotations[exposestrategy.ExposeAnnotation.Key] == exposestrategy.ExposeAnnotation.Value {
+				if svc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value ||
+					svc.Annotations[exposestrategy.ExposeAnnotation.Key] == exposestrategy.ExposeAnnotation.Value ||
+					svc.Annotations[exposestrategy.InjectAnnotation.Key] == exposestrategy.InjectAnnotation.Value {
 					err := strategy.Add(svc)
 					if err != nil {
 						glog.Errorf("Add failed: %v", err)
@@ -160,7 +168,9 @@ func NewController(
 					updateRelatedResources(kubeClient, oc, svc, config, authorizeURL)
 				} else {
 					oldSvc := oldObj.(*api.Service)
-					if oldSvc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value || oldSvc.Annotations[exposestrategy.ExposeAnnotation.Key] == exposestrategy.ExposeAnnotation.Value {
+					if oldSvc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value ||
+						oldSvc.Annotations[exposestrategy.ExposeAnnotation.Key] == exposestrategy.ExposeAnnotation.Value ||
+						svc.Annotations[exposestrategy.InjectAnnotation.Key] == exposestrategy.InjectAnnotation.Value {
 						err := strategy.Remove(svc)
 						if err != nil {
 							glog.Errorf("Remove failed: %v", err)
@@ -273,6 +283,20 @@ func kubernetesServiceProtocol(c *client.Client) string {
 	return "https"
 }
 
+func GetServicePort(svc *api.Service) string {
+	for _, port := range svc.Spec.Ports {
+		tp := port.TargetPort.StrVal
+		if tp != "" {
+			return tp
+		}
+		i := port.TargetPort.IntVal
+		if i > 0 {
+			return strconv.Itoa(int(i))
+		}
+	}
+	return ""
+}
+
 type ConfigYaml struct {
 	Key        string
 	Expression string
@@ -341,6 +365,37 @@ func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Servi
 			}
 		}
 
+		clusterIP := svc.Spec.ClusterIP
+		if clusterIP != "" {
+			clusterIPKey := firstMapValue(ExposeConfigClusterIPKeyAnnotation, svc.Annotations, cm.Annotations)
+			clusterIPPortKey := firstMapValue(ExposeConfigClusterIPPortKeyAnnotation, svc.Annotations, cm.Annotations)
+			clusterIPPortIfEmptyKey := firstMapValue(ExposeConfigClusterIPPortIfEmptyKeyAnnotation, svc.Annotations, cm.Annotations)
+
+			if clusterIPKey != "" {
+				if cm.Data[clusterIPKey] != clusterIP {
+					cm.Data[clusterIPKey] = clusterIP
+					updated = true
+				}
+			}
+
+			port := GetServicePort(svc)
+			if port != "" {
+				clusterIPAndPort := clusterIP + ":" + port
+
+				if clusterIPPortKey != "" {
+					if cm.Data[clusterIPPortKey] != clusterIPAndPort {
+						cm.Data[clusterIPPortKey] = clusterIPAndPort
+						updated = true
+					}
+				}
+				if clusterIPPortIfEmptyKey != "" {
+					if cm.Data[clusterIPPortIfEmptyKey] == "" {
+						cm.Data[clusterIPPortIfEmptyKey] = clusterIPAndPort
+						updated = true
+					}
+				}
+			}
+		}
 		exposeURL := svc.Annotations[exposestrategy.ExposeAnnotationKey]
 		if len(exposeURL) > 0 {
 			host := ""
@@ -403,6 +458,19 @@ func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Servi
 			}
 		}
 	}
+}
+
+// firstMapValue returns the first value in the map which is not empty
+func firstMapValue(key string, maps ...map[string]string) string {
+	for _, m := range maps {
+		if m != nil {
+			v := m[key]
+			if v != "" {
+				return v
+			}
+		}
+	}
+	return ""
 }
 
 func (c *ConfigYaml) UpdateConfigMap(configMap *api.ConfigMap, values map[string]string) bool {
