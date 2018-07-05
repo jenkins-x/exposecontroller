@@ -36,3 +36,16 @@ rules:
   - watch
   - patch
   - update
+- apiGroups:
+  - ""
+  - "route.openshift.io"
+  resources:
+  - routes
+  verbs:
+  - get
+  - list
+  - watch
+  - patch
+  - create
+  - update
+  - delete
