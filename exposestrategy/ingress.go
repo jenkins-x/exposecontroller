@@ -157,8 +157,8 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 		}
 
 		ingress.Spec.Rules = append(ingress.Spec.Rules, rule)
-		glog.Infof("app %s http config is %v\n", appName, s.http)
-		if !s.http {
+
+		if s.tlsAcme {
 			ingress.Spec.TLS = []extensions.IngressTLS{
 				{
 					Hosts:      []string{hostName},
