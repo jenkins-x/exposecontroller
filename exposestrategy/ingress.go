@@ -158,7 +158,7 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 
 		ingress.Spec.Rules = append(ingress.Spec.Rules, rule)
 
-		if s.tlsAcme {
+		if s.tlsAcme && svc.Annotations["jenkins-x.io/skip.tls"] != "true" {
 			ingress.Spec.TLS = []extensions.IngressTLS{
 				{
 					Hosts:      []string{hostName},
