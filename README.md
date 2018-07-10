@@ -142,6 +142,7 @@ If you wish to enable injection of the expose URL into a `ConfigMap` then
   - `expose-no-path.service-key.config.fabric8.io//foo` : Exposed URL of the service called `foo` with any Service path removed (so just the protocol and host)
   - `expose-no-protocol.service-key.config.fabric8.io/foo` : Exposed URL of the service called `foo` with the http protocol removed
   - `expose-full-no-protocol.service-key.config.fabric8.io/foo` : Exposed URL of the service called `foo` ensuring that the URL ends with a `/` character and the http protocol removed
+  - `"jenkins-x.io/skip.tls"` : if tls is enabled and the namespace level this annotation will override it for given service
 
 E.g. when you set an annotation on the config map `expose.config.fabric8.io/url-key: service.url` then an entry to this config map will be added with the key `service.url` and the value of the exposed service URL when a service of the same name as this configmap gets exposed. 
 
