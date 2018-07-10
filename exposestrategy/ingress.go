@@ -189,10 +189,10 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 		return errors.Errorf("cloned to wrong type: %s", reflect.TypeOf(cloned))
 	}
 
-	if s.http {
-		clone, err = addServiceAnnotationWithProtocol(clone, hostName, "http")
-	} else {
+	if s.tlsAcme {
 		clone, err = addServiceAnnotationWithProtocol(clone, hostName, "https")
+	} else {
+		clone, err = addServiceAnnotationWithProtocol(clone, hostName, "http")
 	}
 
 	if err != nil {
