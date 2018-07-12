@@ -2,6 +2,11 @@ Image: "jenkinsxio/exposecontroller"
 ImageTag: "latest"
 BackoffLimit: 5
 Annotations: {}
+config:
+  # use value of `path` to use path based ingress
+  pathMode: ""
+
+
 # Args:
 #   - --help
 
