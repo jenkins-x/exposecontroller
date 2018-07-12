@@ -8,6 +8,9 @@ data:
 {{- if .Values.config.domain }}
     domain: {{ .Values.config.domain }}
 {{- end }}
+{{- if .Values.config.pathMode }}
+    path-mode: {{ .Values.config.pathMode }}
+{{- end }}
     http: {{ .Values.config.http | default true }}
     tls-acme: {{ .Values.config.tlsacme | default false  }}
 kind: ConfigMap
