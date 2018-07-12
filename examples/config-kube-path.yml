@@ -1,0 +1,8 @@
+---
+exposer: Ingress
+domain:
+exposer:
+watch-current-namespace: true
+path-mode: path
+#exposer: LoadBalancer
+#exposer: NodePort

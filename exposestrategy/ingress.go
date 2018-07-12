@@ -16,6 +16,10 @@ import (
 	"k8s.io/kubernetes/pkg/util/intstr"
 )
 
+const (
+	PathModeUsePath = "path"
+)
+
 type IngressStrategy struct {
 	client  *client.Client
 	encoder runtime.Encoder
@@ -25,11 +29,12 @@ type IngressStrategy struct {
 	http          bool
 	tlsAcme       bool
 	urltemplate   string
+	pathMode      string
 }
 
 var _ ExposeStrategy = &IngressStrategy{}
 
-func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain string, http, tlsAcme bool, urltemplate string) (*IngressStrategy, error) {
+func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain string, http, tlsAcme bool, urltemplate, pathMode string) (*IngressStrategy, error) {
 	glog.Infof("NewIngressStrategy 1 %v", http)
 	t, err := typeOfMaster(client)
 	if err != nil {
@@ -61,11 +66,11 @@ func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain s
 		http:        http,
 		tlsAcme:     tlsAcme,
 		urltemplate: urlformat,
+		pathMode:    pathMode,
 	}, nil
 }
 
 func (s *IngressStrategy) Add(svc *api.Service) error {
-	glog.Infof("Add 1 %v", s.http)
 	appName := svc.Annotations["fabric8.io/ingress.name"]
 	if appName == "" {
 		if svc.Labels["release"] != "" {
@@ -76,6 +81,21 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 	}
 
 	hostName := fmt.Sprintf(s.urltemplate, appName, svc.Namespace, s.domain)
+	fullHostName := hostName
+	path := svc.Annotations["fabric8.io/ingress.path"]
+	pathMode := svc.Annotations["fabric8.io/path.mode"]
+	if pathMode == "" {
+		pathMode = s.pathMode
+	}
+	if pathMode == PathModeUsePath {
+		suffix := path
+		if len(suffix) == 0 {
+			suffix = "/"
+		}
+		path = UrlJoin("/", svc.Namespace, appName, suffix)
+		hostName = s.domain
+		fullHostName = UrlJoin(hostName, path)
+	}
 
 	ingress, err := s.client.Ingress(svc.Namespace).Get(appName)
 	createIngress := false
@@ -119,7 +139,7 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 		}
 	}
 
-	path := svc.Annotations["fabric8.io/ingress.path"]
+	glog.Infof("Processing Ingress for Service %s with http: %v path mode: %sand path: %s", svc.Name, s.http, pathMode, path)
 
 	backendPaths := []extensions.HTTPIngressPath{}
 	if ingress.Spec.Rules != nil {
@@ -127,8 +147,8 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 	}
 
 	// check incase we already have this backend path listed
-	for _, path := range backendPaths {
-		if path.Backend.ServiceName == svc.Name {
+	for _, backendPath := range backendPaths {
+		if backendPath.Backend.ServiceName == svc.Name && backendPath.Path == path {
 			return nil
 		}
 	}
@@ -136,7 +156,7 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 	ingress.Spec.Rules = []extensions.IngressRule{}
 	for _, port := range svc.Spec.Ports {
 
-		path := extensions.HTTPIngressPath{
+		ingressPath := extensions.HTTPIngressPath{
 
 			Backend: extensions.IngressBackend{
 				ServiceName: svc.Name,
@@ -145,7 +165,7 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 			Path: path,
 		}
 
-		backendPaths = append(backendPaths, path)
+		backendPaths = append(backendPaths, ingressPath)
 
 		rule := extensions.IngressRule{
 			Host: hostName,
@@ -190,9 +210,9 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 	}
 
 	if s.tlsAcme {
-		clone, err = addServiceAnnotationWithProtocol(clone, hostName, "https")
+		clone, err = addServiceAnnotationWithProtocol(clone, fullHostName, "https")
 	} else {
-		clone, err = addServiceAnnotationWithProtocol(clone, hostName, "http")
+		clone, err = addServiceAnnotationWithProtocol(clone, fullHostName, "http")
 	}
 
 	if err != nil {
