@@ -123,6 +123,18 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 		ingress.Annotations["fabric8.io/generated-by"] = "exposecontroller"
 	}
 
+	if pathMode == PathModeUsePath {
+		if ingress.Annotations["kubernetes.io/ingress.class"] == "" {
+			ingress.Annotations["kubernetes.io/ingress.class"] = "nginx"
+		}
+		if ingress.Annotations["nginx.ingress.kubernetes.io/ingress.class"] == "" {
+			ingress.Annotations["nginx.ingress.kubernetes.io/ingress.class"] = "nginx"
+		}
+		/*		if ingress.Annotations["nginx.ingress.kubernetes.io/rewrite-target"] == "" {
+					ingress.Annotations["nginx.ingress.kubernetes.io/rewrite-target"] = "/"
+				}
+		*/
+	}
 	var tlsSecretName string
 	if s.tlsAcme {
 		ingress.Annotations["kubernetes.io/tls-acme"] = "true"

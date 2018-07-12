@@ -36,6 +36,7 @@ const (
 	ExposeConfigURLProtocol                       = "expose.config.fabric8.io/url-protocol"
 	ExposeConfigURLKeyAnnotation                  = "expose.config.fabric8.io/url-key"
 	ExposeConfigHostKeyAnnotation                 = "expose.config.fabric8.io/host-key"
+	ExposeConfigClusterPathKeyAnnotation          = "expose.config.fabric8.io/path-key"
 	ExposeConfigClusterIPKeyAnnotation            = "expose.config.fabric8.io/clusterip-key"
 	ExposeConfigClusterIPPortKeyAnnotation        = "expose.config.fabric8.io/clusterip-port-key"
 	ExposeConfigClusterIPPortIfEmptyKeyAnnotation = "expose.config.fabric8.io/clusterip-port-if-empty-key"
@@ -421,6 +422,16 @@ func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Servi
 				}
 			}
 
+			pathKey := cm.Annotations[ExposeConfigClusterPathKeyAnnotation]
+			if pathKey != "" {
+				path := urlPath(exposeURL)
+				if cm.Data[pathKey] != path {
+					cm.Data[pathKey] = path
+					updated = true
+				}
+				glog.Infof("Found key %s and has path %s\n", pathKey, path)
+			}
+
 			configYaml := svc.Annotations[ExposeConfigYamlAnnotation]
 			if configYaml != "" {
 				fmt.Printf("Procssing ConfigYaml on service %s\n", svc.Name)
@@ -458,6 +469,23 @@ func updateServiceConfigMap(c *client.Client, oc *oclient.Client, svc *api.Servi
 			}
 		}
 	}
+}
+
+// returns the path starting with a `/` character for the given URL
+func urlPath(urlText string) string {
+	answer := "/"
+	u, err := url.Parse(urlText)
+	if err != nil {
+		glog.Warningf("Could not parse exposeUrl: %s due to: %s", urlText, err)
+	} else {
+		if u.Path != "" {
+			answer = u.Path
+		}
+		if !strings.HasPrefix(answer, "/") {
+			answer = "/" + answer
+		}
+	}
+	return answer
 }
 
 // firstMapValue returns the first value in the map which is not empty
