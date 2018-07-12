@@ -48,6 +48,7 @@ func Load(s string) (*Config, error) {
 type Config struct {
 	Domain                string `yaml:"domain,omitempty"`
 	Exposer               string `yaml:"exposer"`
+	PathMode              string `yaml:"path-mode"`
 	ApiServer             string `yaml:"apiserver,omitempty"`
 	NodeIP                string `yaml:"node-ip,omitempty"`
 	RouteHost             string `yaml:"route-host,omitempty"`
