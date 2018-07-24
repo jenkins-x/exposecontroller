@@ -27,6 +27,7 @@ rules:
   - patch
   - update
 - apiGroups:
+  - extensions
   - apps
   resources:
   - deployments
