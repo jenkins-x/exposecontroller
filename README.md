@@ -173,6 +173,11 @@ metadata:
 * `url` for the full URL 
 * `apiserver` for the api server host/port
 * `apiserverURL` for the full api server URL
+
+
+### Rolling updates of Deployments
+
+You may want your pods to be restarted if `exposecontroller` injects a new value into a `ConfigMap`. if so add the `configmap.fabric8.io/update-on-change` annotation on your `ConfigMap` with the value being the name or list of names (separated by `,`) of the names of the deployments to perform a rolling upgrade on whenever the `ConfigMap` changes.
  
 ### OAuthClient
 
