@@ -46,23 +46,24 @@ func Load(s string) (*Config, error) {
 }
 
 type Config struct {
-	Domain                string `yaml:"domain,omitempty"`
-	Exposer               string `yaml:"exposer"`
-	PathMode              string `yaml:"path-mode"`
-	ApiServer             string `yaml:"apiserver,omitempty"`
-	NodeIP                string `yaml:"node-ip,omitempty"`
-	RouteHost             string `yaml:"route-host,omitempty"`
-	RouteUsePath          bool   `yaml:"route-use-path,omitempty"`
-	ConsoleURL            string `yaml:"console-url,omitempty"`
-	AuthorizePath         string `yaml:"authorize-path,omitempty"`
-	ApiServerProtocol     string `yaml:"apiserver-protocol"`
-	WatchNamespaces       string `yaml:"watch-namespaces"`
-	WatchCurrentNamespace bool   `yaml:"watch-current-namespace"`
-	HTTP                  bool   `yaml:"http"`
-	TLSAcme               bool   `yaml:"tls-acme"`
-	UrlTemplate           string `yaml:"urltemplate,omitempty"`
+	Domain                string   `yaml:"domain,omitempty" json:"domain"`
+	Exposer               string   `yaml:"exposer" json:"exposer"`
+	PathMode              string   `yaml:"path-mode" json:"path_mode"`
+	ApiServer             string   `yaml:"apiserver,omitempty" json:"api_server"`
+	NodeIP                string   `yaml:"node-ip,omitempty" json:"node_ip"`
+	RouteHost             string   `yaml:"route-host,omitempty" json:"route_host"`
+	RouteUsePath          bool     `yaml:"route-use-path,omitempty" json:"route_use_path"`
+	ConsoleURL            string   `yaml:"console-url,omitempty" json:"console_url"`
+	AuthorizePath         string   `yaml:"authorize-path,omitempty" json:"authorize_path"`
+	ApiServerProtocol     string   `yaml:"apiserver-protocol" json:"api_server_protocol"`
+	WatchNamespaces       string   `yaml:"watch-namespaces" json:"watch_namespaces"`
+	WatchCurrentNamespace bool     `yaml:"watch-current-namespace" json:"watch_current_namespace"`
+	HTTP                  bool     `yaml:"http" json:"http"`
+	TLSAcme               bool     `yaml:"tls-acme" json:"tls_acme"`
+	UrlTemplate           string   `yaml:"urltemplate,omitempty" json:"url_template"`
+	Services              []string `yaml:"services,omitempty" json:"services"`
 	// original is the input from which the config was parsed.
-	original string
+	original string `json:"original"`
 }
 
 var (
