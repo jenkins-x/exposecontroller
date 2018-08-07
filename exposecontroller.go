@@ -47,6 +47,7 @@ var (
 	httpb                 = flag.Bool("http", false, `Use HTTP`)
 	watchNamespaces       = flag.String("watch-namespace", "", "Exposecontroller will only look at the provided namespace")
 	watchCurrentNamespace = flag.Bool("watch-current-namespace", true, `Exposecontroller will look at the current namespace only - (default: 'true' unless --watch-namespace specified)`)
+	services              = flag.String("services", "", "List of comma separated service names which will be exposed, if empty all services from namespace will be considered")
 )
 
 func main() {
@@ -123,6 +124,10 @@ func main() {
 	if *watchNamespaces != "" {
 		controllerConfig.WatchNamespaces = *watchNamespaces
 		controllerConfig.WatchCurrentNamespace = false
+	}
+
+	if *services != "" {
+		controllerConfig.Services = strings.Split(*services, ",")
 	}
 
 	glog.Infof("Config file after overrides %s", controllerConfig.String())

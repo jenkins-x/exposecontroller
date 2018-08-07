@@ -150,6 +150,9 @@ func NewController(
 				if svc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value ||
 					svc.Annotations[exposestrategy.ExposeAnnotation.Key] == exposestrategy.ExposeAnnotation.Value ||
 					svc.Annotations[exposestrategy.InjectAnnotation.Key] == exposestrategy.InjectAnnotation.Value {
+					if !isServiceWhitelisted(svc.GetName(), config) {
+						return
+					}
 					err := strategy.Add(svc)
 					if err != nil {
 						glog.Errorf("Add failed: %v", err)
@@ -162,6 +165,9 @@ func NewController(
 				if svc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value ||
 					svc.Annotations[exposestrategy.ExposeAnnotation.Key] == exposestrategy.ExposeAnnotation.Value ||
 					svc.Annotations[exposestrategy.InjectAnnotation.Key] == exposestrategy.InjectAnnotation.Value {
+					if !isServiceWhitelisted(svc.GetName(), config) {
+						return
+					}
 					err := strategy.Add(svc)
 					if err != nil {
 						glog.Errorf("Add failed: %v", err)
@@ -172,6 +178,9 @@ func NewController(
 					if oldSvc.Labels[exposestrategy.ExposeLabel.Key] == exposestrategy.ExposeLabel.Value ||
 						oldSvc.Annotations[exposestrategy.ExposeAnnotation.Key] == exposestrategy.ExposeAnnotation.Value ||
 						svc.Annotations[exposestrategy.InjectAnnotation.Key] == exposestrategy.InjectAnnotation.Value {
+						if !isServiceWhitelisted(svc.GetName(), config) {
+							return
+						}
 						err := strategy.Remove(svc)
 						if err != nil {
 							glog.Errorf("Remove failed: %v", err)
@@ -186,6 +195,9 @@ func NewController(
 					split := strings.Split(svc.Key, "/")
 					ns := split[0]
 					name := split[1]
+					if !isServiceWhitelisted(name, config) {
+						return
+					}
 					err := strategy.Remove(&api.Service{ObjectMeta: api.ObjectMeta{Namespace: ns, Name: name}})
 					if err != nil {
 						glog.Errorf("Remove failed: %v", err)
@@ -196,6 +208,21 @@ func NewController(
 	)
 
 	return &c, nil
+}
+
+// isServiceWhitelisted checks if a service is white-listed in the controller configuration, allow all services if
+// the white-list is empty
+func isServiceWhitelisted(service string, config *Config) bool {
+	services := config.Services
+	if len(services) == 0 {
+		return true
+	}
+	for _, s := range services {
+		if s == service {
+			return true
+		}
+	}
+	return false
 }
 
 // findApiServerFromNode lets try default the API server URL by detecting minishift/minikube for single node clusters
@@ -504,7 +531,7 @@ func firstMapValue(key string, maps ...map[string]string) string {
 func (c *ConfigYaml) UpdateConfigMap(configMap *api.ConfigMap, values map[string]string) bool {
 	key := c.Key
 	if key == "" {
-		glog.Warningf("No key in ConfigYaml settings %#v\n", configMap.Name, key, c)
+		glog.Warningf("ConfigMap %s does not have a key in ConfigYaml settings %#v\n", configMap.Name, c)
 		return false
 	}
 	expValue := values[c.Expression]
