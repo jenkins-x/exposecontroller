@@ -531,7 +531,7 @@ func firstMapValue(key string, maps ...map[string]string) string {
 func (c *ConfigYaml) UpdateConfigMap(configMap *api.ConfigMap, values map[string]string) bool {
 	key := c.Key
 	if key == "" {
-		glog.Warningf("No key in ConfigYaml settings %#v\n", configMap.Name, key, c)
+		glog.Warningf("ConfigMap %s does not have a key in ConfigYaml settings %#v\n", configMap.Name, c)
 		return false
 	}
 	expValue := values[c.Expression]
