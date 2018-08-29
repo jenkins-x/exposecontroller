@@ -3,9 +3,10 @@ ImageTag: "latest"
 BackoffLimit: 5
 Annotations: {}
   # use value of `path` to use path based ingress
-#config:
-  #pathMode: "path"
-
+# config:
+#   pathMode: "path"
+#   extravalues:
+#     foo: bar
 
 # Args:
 #   - --help
