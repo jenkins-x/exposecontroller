@@ -83,6 +83,9 @@ func main() {
 		ns := currentNamespace
 		// TODO allow this name to be passed in?
 		cm, err := kubeClient.ConfigMaps(ns).Get("exposecontroller")
+		if err != nil {
+			cm, err = kubeClient.ConfigMaps(ns).Get("ingress-config")
+		}
 		if err == nil {
 			glog.Infof("Using ConfigMap exposecontroller to load configuration...")
 			// TODO we could allow the config to be passed in via key/value pairs?
