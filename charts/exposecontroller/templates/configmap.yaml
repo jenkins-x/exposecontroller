@@ -11,6 +11,9 @@ data:
 {{- if .Values.config.pathMode }}
     path-mode: {{ .Values.config.pathMode }}
 {{- end }}
+{{- if .Values.config.urltemplate }}
+    urltemplate: {{ .Values.config.urltemplate }}
+{{- end }}
     http: {{ .Values.config.http | default true }}
     tls-acme: {{ .Values.config.tlsacme | default false  }}
 {{- if .Values.config.extravalues }}
