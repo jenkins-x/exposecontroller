@@ -1,6 +1,6 @@
 ---
 exposer: Ingress
-domain:
+domain: 54.67.13.199.nip.io
 exposer:
 watch-current-namespace: true
 path-mode: path

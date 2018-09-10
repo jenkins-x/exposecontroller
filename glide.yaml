@@ -33,3 +33,5 @@ import:
   version: 559433598c7be9d30d6cfc5cad5b5dfdb686725c
   repo: git://github.com/openshift/docker-distribution.git
   vcs: git
+testImport:
+- package: github.com/stretchr/testify

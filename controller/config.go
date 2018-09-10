@@ -70,6 +70,18 @@ var (
 	DefaultConfig = Config{}
 )
 
+// MapToConfig converts the ConfigMap data to a Config object
+func MapToConfig(data map[string]string) (*Config, error) {
+	answer := &Config{}
+
+	b, err := yaml.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	err = yaml.Unmarshal(b, answer)
+	return answer, err
+}
+
 func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	*c = DefaultConfig
 	// We want to set c to the defaults and then overwrite it with the input.
