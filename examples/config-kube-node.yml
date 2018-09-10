@@ -1,0 +1,6 @@
+---
+exposer: NodePort
+node-ip: a83aac7f785b911e8a75b0afd793a1e8-95ac40519987511f.elb.us-west-2.amazonaws.com
+domain: a83aac7f785b911e8a75b0afd793a1e8-95ac40519987511f.elb.us-west-2.amazonaws.com
+http: true
+tls-acme: false
