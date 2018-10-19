@@ -174,29 +174,27 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 				ServiceName: svc.Name,
 				ServicePort: intstr.FromInt(int(port.Port)),
 			},
-			Path: path,
+			Path: s.portPath(svc, &port, path),
 		}
-
-		backendPaths = append(backendPaths, ingressPath)
 
 		rule := extensions.IngressRule{
 			Host: hostName,
 			IngressRuleValue: extensions.IngressRuleValue{
 				HTTP: &extensions.HTTPIngressRuleValue{
-					Paths: backendPaths,
+					Paths: []extensions.HTTPIngressPath{ingressPath},
 				},
 			},
 		}
 
 		ingress.Spec.Rules = append(ingress.Spec.Rules, rule)
+	}
 
-		if s.tlsAcme && svc.Annotations["jenkins-x.io/skip.tls"] != "true" {
-			ingress.Spec.TLS = []extensions.IngressTLS{
-				{
-					Hosts:      []string{hostName},
-					SecretName: tlsSecretName,
-				},
-			}
+	if s.tlsAcme && svc.Annotations["jenkins-x.io/skip.tls"] != "true" {
+		ingress.Spec.TLS = []extensions.IngressTLS{
+			{
+				Hosts:      []string{hostName},
+				SecretName: tlsSecretName,
+			},
 		}
 	}
 
@@ -246,6 +244,13 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 	}
 
 	return nil
+}
+
+func (s *IngressStrategy) portPath(svc *api.Service, port *api.ServicePort, path string) string {
+	if len(svc.Spec.Ports) > 1 {
+		return UrlJoin(path, "/", port.Name)
+	}
+	return path
 }
 
 func (s *IngressStrategy) Remove(svc *api.Service) error {
