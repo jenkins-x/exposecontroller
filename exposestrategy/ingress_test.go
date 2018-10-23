@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/jenkins-x/exposecontroller/exposestrategy"
-	"gotest.tools/assert"
 	"k8s.io/kubernetes/pkg/api"
 )
 
@@ -21,13 +20,19 @@ func TestPortPath(t *testing.T) {
 
 	rootPath := ""
 	path := es.PortPath(svc, port, rootPath)
-	assert.Equal(t, rootPath+"/test", path)
+	assertStringEquals(t, rootPath+"/test", path, "port path")
 
 	rootPath = "/root"
 	path = es.PortPath(svc, port, rootPath)
-	assert.Equal(t, rootPath+"/test", path)
+	assertStringEquals(t, rootPath+"/test", path, "port path")
 
 	rootPath = "/root/"
 	path = es.PortPath(svc, port, rootPath)
-	assert.Equal(t, rootPath+"test", path)
+	assertStringEquals(t, rootPath+"test", path, "port path")
+}
+
+func assertStringEquals(t *testing.T, expected, actual, message string) {
+	if expected != actual {
+		t.Errorf("%s was not equal. Expected %s but got %s\n", message, expected, actual)
+	}
 }

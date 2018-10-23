@@ -22,10 +22,7 @@ func TestMapToConfig(t *testing.T) {
 	} else {
 		assertStringEquals(t, expectedExposer, config.Exposer, "Exposer")
 		assertStringEquals(t, expectedDomain, config.Domain, "Domain")
-/*
-		assert.Equal(t, expectedExposer, config.Exposer, "Exposer")
-		assert.Equal(t, expectedDomain, config.Domain, "Domain")
-*/
+
 		fmt.Printf("Config is %#v\n", config)
 	}
 }
