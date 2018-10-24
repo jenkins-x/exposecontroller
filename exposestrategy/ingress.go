@@ -166,28 +166,28 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 	}
 
 	ingress.Spec.Rules = []extensions.IngressRule{}
+	ingressPaths := []extensions.HTTPIngressPath{}
 	for _, port := range svc.Spec.Ports {
-
 		ingressPath := extensions.HTTPIngressPath{
-
 			Backend: extensions.IngressBackend{
 				ServiceName: svc.Name,
 				ServicePort: intstr.FromInt(int(port.Port)),
 			},
 			Path: s.PortPath(svc, &port, path),
 		}
+		ingressPaths = append(ingressPaths, ingressPath)
 
-		rule := extensions.IngressRule{
-			Host: hostName,
-			IngressRuleValue: extensions.IngressRuleValue{
-				HTTP: &extensions.HTTPIngressRuleValue{
-					Paths: []extensions.HTTPIngressPath{ingressPath},
-				},
-			},
-		}
-
-		ingress.Spec.Rules = append(ingress.Spec.Rules, rule)
 	}
+
+	rule := extensions.IngressRule{
+		Host: hostName,
+		IngressRuleValue: extensions.IngressRuleValue{
+			HTTP: &extensions.HTTPIngressRuleValue{
+				Paths: ingressPaths,
+			},
+		},
+	}
+	ingress.Spec.Rules = append(ingress.Spec.Rules, rule)
 
 	if s.tlsAcme && svc.Annotations["jenkins-x.io/skip.tls"] != "true" {
 		ingress.Spec.TLS = []extensions.IngressTLS{
