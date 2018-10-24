@@ -194,13 +194,17 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 		exposePort = strconv.Itoa(int(port.Port))
 	}
 
-	glog.Infof("Exposing Port %s of Service %s", exposePort, svc.Name)
+	servicePort, err := strconv.Atoi(exposePort)
+	if err != nil {
+		return errors.Wrapf(err, "failed to convert the exposed port '%s' to int", exposePort)
+	}
+	glog.Infof("Exposing Port %d of Service %s", servicePort, svc.Name)
 
 	ingressPaths := []extensions.HTTPIngressPath{}
 	ingressPath := extensions.HTTPIngressPath{
 		Backend: extensions.IngressBackend{
 			ServiceName: svc.Name,
-			ServicePort: intstr.FromString(exposePort),
+			ServicePort: intstr.FromInt(servicePort),
 		},
 		Path: path,
 	}
