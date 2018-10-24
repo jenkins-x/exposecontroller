@@ -28,6 +28,7 @@ var (
 	ExposeAnnotation            = Label{Key: "fabric8.io/expose", Value: "true"}
 	InjectAnnotation            = Label{Key: "fabric8.io/inject", Value: "true"}
 	ExposeAnnotationKey         = "fabric8.io/exposeUrl"
+	ExposePortAnnotationKey     = "fabric8.io/exposePort"
 	ApiServicePathAnnotationKey = "api.service.kubernetes.io/path"
 )
 

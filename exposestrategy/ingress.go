@@ -3,6 +3,7 @@ package exposestrategy
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/golang/glog"
@@ -151,7 +152,7 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 		}
 	}
 
-	glog.Infof("Processing Ingress for Service %s with http: %v path mode: %sand path: %s", svc.Name, s.http, pathMode, path)
+	glog.Infof("Processing Ingress for Service %s with http: %v path mode: %s and path: %s", svc.Name, s.http, pathMode, path)
 
 	backendPaths := []extensions.HTTPIngressPath{}
 	if ingress.Spec.Rules != nil {
@@ -165,20 +166,47 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 		}
 	}
 
-	ingress.Spec.Rules = []extensions.IngressRule{}
-	ingressPaths := []extensions.HTTPIngressPath{}
-	for _, port := range svc.Spec.Ports {
-		ingressPath := extensions.HTTPIngressPath{
-			Backend: extensions.IngressBackend{
-				ServiceName: svc.Name,
-				ServicePort: intstr.FromInt(int(port.Port)),
-			},
-			Path: s.PortPath(svc, &port, path),
+	exposePort := svc.Annotations[ExposePortAnnotationKey]
+	if exposePort != "" {
+		port, err := strconv.Atoi(exposePort)
+		if err == nil {
+			found := false
+			for _, p := range svc.Spec.Ports {
+				if port == int(p.Port) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				glog.Warningf("Port '%s' provided in the annotation '%s' is not available in the ports of service '%s'",
+					exposePort, ExposePortAnnotationKey, svc.GetName())
+				exposePort = ""
+			}
+		} else {
+			glog.Warningf("Port '%s' provided in the annotation '%s' is not a valid number",
+				exposePort, ExposePortAnnotationKey)
+			exposePort = ""
 		}
-		ingressPaths = append(ingressPaths, ingressPath)
-
+	}
+	// Pick the fist port available in the service if no expose port was configured
+	if exposePort == "" {
+		port := svc.Spec.Ports[0]
+		exposePort = strconv.Itoa(int(port.Port))
 	}
 
+	glog.Infof("Exposing Port %s of Service %s", exposePort, svc.Name)
+
+	ingressPaths := []extensions.HTTPIngressPath{}
+	ingressPath := extensions.HTTPIngressPath{
+		Backend: extensions.IngressBackend{
+			ServiceName: svc.Name,
+			ServicePort: intstr.FromString(exposePort),
+		},
+		Path: path,
+	}
+	ingressPaths = append(ingressPaths, ingressPath)
+
+	ingress.Spec.Rules = []extensions.IngressRule{}
 	rule := extensions.IngressRule{
 		Host: hostName,
 		IngressRuleValue: extensions.IngressRuleValue{
@@ -244,17 +272,6 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 	}
 
 	return nil
-}
-
-func (s *IngressStrategy) PortPath(svc *api.Service, port *api.ServicePort, path string) string {
-	if len(svc.Spec.Ports) > 1 {
-		if len(path) == 0 {
-			return UrlJoin("/", port.Name)
-		}
-		path = strings.TrimSuffix(path, "/")
-		return path + UrlJoin("/", port.Name)
-	}
-	return path
 }
 
 func (s *IngressStrategy) Remove(svc *api.Service) error {

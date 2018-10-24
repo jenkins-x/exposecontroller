@@ -44,6 +44,15 @@ To add a path to the ingress rule for your service add an annotation:
 kubectl annotate svc foo fabric8.io/ingress.path=/api/
 ```
 
+### Multiple service ports
+
+A service can have multiple ports defined (e.g. 8020 and 8021). To select which port to expose add an annotation:
+```
+kubectl annotate svc foo fabric8.io/exposePort=8020
+```
+
+It not annotation is defined, it will pick the first port available in the list.
+
 ### Daemon mode
 
 To run a one shot exposecontroller pass the `--daemon` flag
