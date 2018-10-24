@@ -173,7 +173,7 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 				ServiceName: svc.Name,
 				ServicePort: intstr.FromInt(int(port.Port)),
 			},
-			Path: s.PortPath(svc, &port, path),
+			Path: path,
 		}
 		ingressPaths = append(ingressPaths, ingressPath)
 
@@ -244,17 +244,6 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 	}
 
 	return nil
-}
-
-func (s *IngressStrategy) PortPath(svc *api.Service, port *api.ServicePort, path string) string {
-	if len(svc.Spec.Ports) > 1 {
-		if len(path) == 0 {
-			return UrlJoin("/", port.Name)
-		}
-		path = strings.TrimSuffix(path, "/")
-		return path + UrlJoin("/", port.Name)
-	}
-	return path
 }
 
 func (s *IngressStrategy) Remove(svc *api.Service) error {
