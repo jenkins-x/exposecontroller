@@ -4,28 +4,6 @@ Automatically expose services creating ingress rules, openshift routes or modify
 
 ## Getting started
 
-We're adding support for Helm however until then if you want to get going quick using our defaults:
-
-```sh
-kubectl create -f http://central.maven.org/maven2/io/fabric8/devops/apps/exposecontroller/2.2.268/exposecontroller-2.2.268-kubernetes.yml
-```
-
-```sh
-kubectl label svc foo expose=true // now deprecated
-```
-or
-```sh
-kubectl annotate svc foo fabric8.io/expose=true
-```
-If you have [gofabric8](https://github.com/fabric8io/gofabric8) then
-```sh
-gofabric8 service foo
-```
-
-else get the external URL from the service annotation and paste in into your browser
-```sh
-kubectl get svc foo -o=yaml
-```
 
 ### Ingress name
 
