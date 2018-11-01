@@ -233,7 +233,6 @@ Glide is as the exposecontroller package management
 
  * install [glide](https://github.com/Masterminds/glide#install)
 
-
 # Future
 
 On startup it would be good to check if an ingress controller is already running in the cluster, if not create one in an appropriate namespace using a `nodeselector` that chooses a node with a public ip.
