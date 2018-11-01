@@ -124,6 +124,21 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 		ingress.Annotations["fabric8.io/generated-by"] = "exposecontroller"
 	}
 
+	hasOwner := false
+	for _, o := range ingress.OwnerReferences {
+		if o.UID == svc.UID {
+			hasOwner = true
+			break
+		}
+	}
+	if !hasOwner {
+		ingress.OwnerReferences = append(ingress.OwnerReferences, api.OwnerReference{
+			APIVersion: svc.APIVersion,
+			Kind: svc.Kind,
+			Name: svc.Name,
+			UID: svc.UID,
+		})
+	}
 	if pathMode == PathModeUsePath {
 		if ingress.Annotations["kubernetes.io/ingress.class"] == "" {
 			ingress.Annotations["kubernetes.io/ingress.class"] = "nginx"
