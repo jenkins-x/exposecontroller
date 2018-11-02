@@ -133,7 +133,7 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 	}
 	if !hasOwner {
 		ingress.OwnerReferences = append(ingress.OwnerReferences, api.OwnerReference{
-			APIVersion: svc.APIVersion,
+			APIVersion: "v1",
 			Kind: svc.Kind,
 			Name: svc.Name,
 			UID: svc.UID,
