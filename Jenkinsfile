@@ -22,7 +22,6 @@ pipeline {
     
         stage('Build and Release') {
             environment {
-                GH_CREDS = credentials('jenkins-x-github')
                 CHARTMUSEUM_CREDS = credentials('jenkins-x-chartmuseum')
             }
             when {
@@ -35,8 +34,10 @@ pipeline {
                     sh "echo \$(jx-release-version) > version/VERSION"
                     sh "git add version/VERSION"
                     sh "git commit -m 'release \$(cat version/VERSION)'"
-
-                    sh "GITHUB_ACCESS_TOKEN=$GH_CREDS_PSW make release"
+"
+                    sh "git config --global credential.helper store"
+                    sh "jx step git credentials"
+                    sh "make release"
                 }
                 dir ('/home/jenkins/go/src/github.com/jenkins-x/exposecontroller/charts/exposecontroller') {
                     sh "helm init --client-only"
