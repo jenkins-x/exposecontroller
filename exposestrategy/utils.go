@@ -43,15 +43,20 @@ func addServiceAnnotation(svc *api.Service, hostName string) (*api.Service, erro
 }
 
 func addServiceAnnotationWithProtocol(svc *api.Service, hostName string, protocol string) (*api.Service, error) {
-	exposeURL := protocol + "://" + hostName
 	if svc.Annotations == nil {
 		svc.Annotations = map[string]string{}
 	}
+
+	exposeURL := protocol + "://" + hostName
 	path := svc.Annotations[ApiServicePathAnnotationKey]
 	if len(path) > 0 {
 		exposeURL = urlJoin(exposeURL, path)
 	}
 	svc.Annotations[ExposeAnnotationKey] = exposeURL
+
+	if key := svc.Annotations[ExposeHostNameAsAnnotationKey]; len(key) > 0 {
+		svc.Annotations[key] = hostName
+	}
 
 	return svc, nil
 }
@@ -63,6 +68,9 @@ func urlJoin(repo string, path string) string {
 
 func removeServiceAnnotation(svc *api.Service) *api.Service {
 	delete(svc.Annotations, ExposeAnnotationKey)
+	if key := svc.Annotations[ExposeHostNameAsAnnotationKey]; len(key) > 0 {
+		delete(svc.Annotations, key)
+	}
 
 	return svc
 }

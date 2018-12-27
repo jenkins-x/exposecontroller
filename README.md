@@ -103,6 +103,28 @@ __exposecontroller__ will use your `exposer` type in the configmap above to auto
 
 Having an external URL is extremely useful. Here are some other uses of the expose URL in addition to the annotation that gets applied to the `Service`
 
+### Custom annotations
+
+You can add the hostname as a custom annotation on the service, by using the `fabric8.io/exposeHostNameAs` annotation:
+
+```yaml
+metadata:
+  annotations:
+    fabric8.io/exposeHostNameAs: osiris.deislabs.io/ingressHostname
+```
+
+will be converted to:
+
+```yaml
+metadata:
+  annotations:
+    fabric8.io/exposeUrl: https://example.com
+    osiris.deislabs.io/ingressHostname: example.com
+    fabric8.io/exposeHostNameAs: osiris.deislabs.io/ingressHostname
+```
+
+This is useful if you are working with tools which require access to the exposed hostname at the service level, using a specific annotation, such as [Osiris](https://github.com/deislabs/osiris).
+
 ### ConfigMap
 
 Sometimes web applications need to know their external URL so that they can use that link or host/port when generating documentation or links.
