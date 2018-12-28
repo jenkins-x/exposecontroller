@@ -24,12 +24,13 @@ type Label struct {
 }
 
 var (
-	ExposeLabel                 = Label{Key: "expose", Value: "true"}
-	ExposeAnnotation            = Label{Key: "fabric8.io/expose", Value: "true"}
-	InjectAnnotation            = Label{Key: "fabric8.io/inject", Value: "true"}
-	ExposeAnnotationKey         = "fabric8.io/exposeUrl"
-	ExposePortAnnotationKey     = "fabric8.io/exposePort"
-	ApiServicePathAnnotationKey = "api.service.kubernetes.io/path"
+	ExposeLabel                   = Label{Key: "expose", Value: "true"}
+	ExposeAnnotation              = Label{Key: "fabric8.io/expose", Value: "true"}
+	InjectAnnotation              = Label{Key: "fabric8.io/inject", Value: "true"}
+	ExposeHostNameAsAnnotationKey = "fabric8.io/exposeHostNameAs"
+	ExposeAnnotationKey           = "fabric8.io/exposeUrl"
+	ExposePortAnnotationKey       = "fabric8.io/exposePort"
+	ApiServicePathAnnotationKey   = "api.service.kubernetes.io/path"
 )
 
 func New(exposer, domain, urltemplate, nodeIP, routeHost, pathMode string, routeUsePath, http, tlsAcme bool, client *client.Client, restClientConfig *restclient.Config, encoder runtime.Encoder) (ExposeStrategy, error) {
