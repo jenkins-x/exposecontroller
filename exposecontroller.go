@@ -103,6 +103,13 @@ func main() {
 				}
 			} else {
 				glog.Warningf("Failed to load Namespace %s: %s", currentNamespace, err)
+
+				// lets try default to trimming the lasts path from the current namespace
+				idx := strings.LastIndex(currentNamespace, "-")
+				if idx > 1 {
+					ns := currentNamespace[0:idx]
+					cc2 = tryFindConfig(kubeClient, ns)
+				}
 			}
 		}
 		if cc2 != nil {
