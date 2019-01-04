@@ -79,10 +79,12 @@ func main() {
 
 	controllerConfig, exists, err := controller.LoadFile(*configFile)
 	if !exists || err != nil {
-		glog.Warningf("%s", err)
+		if err != nil {
+			glog.Warningf("failed to load config file: %s", err)
+		}
 
-		controllerConfig = tryFindConfig(kubeClient, currentNamespace)
-		if controllerConfig == nil {
+		cc2 := tryFindConfig(kubeClient, currentNamespace)
+		if cc2 == nil {
 			// lets try find the ConfigMap in the dev namespace
 			resource, err := kubeClient.Namespaces().Get(currentNamespace)
 			if err == nil && resource != nil {
@@ -92,12 +94,19 @@ func main() {
 					if ns == "" {
 						glog.Warningf("No 'team' label on Namespace %s", currentNamespace)
 					} else {
-						controllerConfig = tryFindConfig(kubeClient, ns)
+						glog.Infof("trying to find the ConfigMap in the Dev Namespace %s", ns)
+
+						cc2 = tryFindConfig(kubeClient, ns)
 					}
+				} else {
+					glog.Warningf("No labels on Namespace %s", currentNamespace)
 				}
 			} else {
 				glog.Warningf("Failed to load Namespace %s: %s", currentNamespace, err)
 			}
+		}
+		if cc2 != nil {
+			controllerConfig = cc2
 		}
 	} else {
 		glog.Infof("Loaded config file %s", *configFile)
