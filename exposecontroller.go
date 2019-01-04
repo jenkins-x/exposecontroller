@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"k8s.io/kubernetes/pkg/client/unversioned"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -80,35 +81,22 @@ func main() {
 	if !exists || err != nil {
 		glog.Warningf("%s", err)
 
-		ns := currentNamespace
-		// TODO allow this name to be passed in?
-		cm, err := kubeClient.ConfigMaps(ns).Get("exposecontroller")
-		if err == nil {
-			glog.Infof("Using ConfigMap exposecontroller to load configuration...")
-			// TODO we could allow the config to be passed in via key/value pairs?
-			text := cm.Data["config.yml"]
-			if text != "" {
-				controllerConfig, err = controller.Load(text)
-				if err != nil {
-					glog.Warningf("Could not parse the config text from exposecontroller ConfigMap  %v", err)
-				}
-				glog.Infof("Loaded ConfigMap exposecontroller to load configuration!")
-			}
-		} else {
-			glog.Warningf("Could not find ConfigMap exposecontroller ConfigMap in namespace %s", ns)
-
-			cm, err = kubeClient.ConfigMaps(ns).Get("ingress-config")
-			if err != nil {
-				glog.Warningf("Could not find ConfigMap ingress-config ConfigMap in namespace %s", ns)
-			} else {
-				glog.Infof("Loaded ConfigMap ingress-config to load configuration!")
-				data := cm.Data
-				if data != nil {
-					controllerConfig, err = controller.MapToConfig(data)
-					if err != nil {
-						glog.Warningf("Failed to convert Map data %#v from configMap ingress-config in namespace %s due to: %s\n", controllerConfig, ns, err)
+		controllerConfig = tryFindConfig(kubeClient, currentNamespace)
+		if controllerConfig == nil {
+			// lets try find the ConfigMap in the dev namespace
+			resource, err := kubeClient.Namespaces().Get(currentNamespace)
+			if err == nil && resource != nil {
+				labels := resource.Labels
+				if labels != nil {
+					ns := labels["team"]
+					if ns == "" {
+						glog.Warningf("No 'team' label on Namespace %s", currentNamespace)
+					} else {
+						controllerConfig = tryFindConfig(kubeClient, ns)
 					}
 				}
+			} else {
+				glog.Warningf("Failed to load Namespace %s: %s", currentNamespace, err)
 			}
 		}
 	} else {
@@ -215,6 +203,40 @@ func main() {
 
 		c.Run()
 	}
+}
+
+func tryFindConfig(kubeClient *unversioned.Client, ns string) *controller.Config {
+	var controllerConfig *controller.Config
+	cm, err := kubeClient.ConfigMaps(ns).Get("exposecontroller")
+	if err == nil {
+		glog.Infof("Using ConfigMap exposecontroller to load configuration...")
+		// TODO we could allow the config to be passed in via key/value pairs?
+		text := cm.Data["config.yml"]
+		if text != "" {
+			controllerConfig, err = controller.Load(text)
+			if err != nil {
+				glog.Warningf("Could not parse the config text from exposecontroller ConfigMap  %v", err)
+			}
+			glog.Infof("Loaded ConfigMap exposecontroller to load configuration!")
+		}
+	} else {
+		glog.Warningf("Could not find ConfigMap exposecontroller ConfigMap in namespace %s", ns)
+
+		cm, err = kubeClient.ConfigMaps(ns).Get("ingress-config")
+		if err != nil {
+			glog.Warningf("Could not find ConfigMap ingress-config ConfigMap in namespace %s", ns)
+		} else {
+			glog.Infof("Loaded ConfigMap ingress-config to load configuration!")
+			data := cm.Data
+			if data != nil {
+				controllerConfig, err = controller.MapToConfig(data)
+				if err != nil {
+					glog.Warningf("Failed to convert Map data %#v from configMap ingress-config in namespace %s due to: %s\n", controllerConfig, ns, err)
+				}
+			}
+		}
+	}
+	return controllerConfig
 }
 
 func registerHandlers() {
