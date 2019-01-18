@@ -17,6 +17,10 @@ spec:
   template:
     metadata:
       name: "{{.Release.Name}}"
+      # istio-proxy prevents job pods from completing if istio is enabled
+      # https://github.com/istio/istio/issues/6324
+      annotations:
+        sidecar.istio.io/inject: "false"
       labels:
         heritage: {{.Release.Service | quote }}
         release: {{.Release.Name | quote }}

@@ -61,6 +61,15 @@ func main() {
 	glog.Infof("Using build: %v", version.Version)
 
 	kubeClient, err := factory.Client()
+	for i := 0; i < 30; i++ {
+		if err != nil {
+			glog.Warningf("failed to create client, retrying: %s", err)
+			time.Sleep(1 * time.Second)
+			kubeClient, err = factory.Client()
+		} else {
+			break
+		}
+	}
 	if err != nil {
 		glog.Fatalf("failed to create client: %s", err)
 	}
