@@ -224,6 +224,7 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 		Path: path,
 	}
 	ingressPaths = append(ingressPaths, ingressPath)
+	ingressPaths = append(ingressPaths, backendPaths...)
 
 	ingress.Spec.Rules = []extensions.IngressRule{}
 	rule := extensions.IngressRule{
