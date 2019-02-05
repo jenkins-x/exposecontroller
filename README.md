@@ -51,7 +51,7 @@ We use a Kubernetes ConfigMap and mutltiple config entries. Full list [here](htt
 
 If no config map or data values provided exposecontroller will try and work out what `exposer` or `domain` config for the playform.  
 
-* exposer - Minishift anf Minikube will default to `NodePort`, we  use `Ingress` for Kubernetes or `Route` for OpenShift.
+* exposer - Minishift and Minikube will default to `NodePort`, we  use `Ingress` for Kubernetes or `Route` for OpenShift.
 * domain - using [nip.io](http://nip.io/) for magic wildcard DNS, exposecontroller will try and find a https://stackpoint.io HAProxy or Nginx Ingress controller.  We also default to the single VM IP if using minishift or minikube.  Together these create an external hostname we can use to access our applications.
 
 
