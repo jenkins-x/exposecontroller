@@ -31,11 +31,12 @@ type IngressStrategy struct {
 	tlsAcme       bool
 	urltemplate   string
 	pathMode      string
+	ingressClass  string
 }
 
 var _ ExposeStrategy = &IngressStrategy{}
 
-func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain string, http, tlsAcme bool, urltemplate, pathMode string) (*IngressStrategy, error) {
+func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain string, http, tlsAcme bool, urltemplate, pathMode string, ingressClass string) (*IngressStrategy, error) {
 	glog.Infof("NewIngressStrategy 1 %v", http)
 	t, err := typeOfMaster(client)
 	if err != nil {
@@ -61,13 +62,14 @@ func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain s
 	glog.Infof("Using url template [%s] format [%s]", urltemplate, urlformat)
 
 	return &IngressStrategy{
-		client:      client,
-		encoder:     encoder,
-		domain:      domain,
-		http:        http,
-		tlsAcme:     tlsAcme,
-		urltemplate: urlformat,
-		pathMode:    pathMode,
+		client:       client,
+		encoder:      encoder,
+		domain:       domain,
+		http:         http,
+		tlsAcme:      tlsAcme,
+		urltemplate:  urlformat,
+		pathMode:     pathMode,
+		ingressClass: ingressClass,
 	}, nil
 }
 
@@ -139,6 +141,12 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 			UID:        svc.UID,
 		})
 	}
+
+	if s.ingressClass != "" {
+		ingress.Annotations["kubernetes.io/ingress.class"] = s.ingressClass
+		ingress.Annotations["nginx.ingress.kubernetes.io/ingress.class"] = s.ingressClass
+	}
+
 	if pathMode == PathModeUsePath {
 		if ingress.Annotations["kubernetes.io/ingress.class"] == "" {
 			ingress.Annotations["kubernetes.io/ingress.class"] = "nginx"
