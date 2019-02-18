@@ -35,6 +35,12 @@ var (
 
 func New(exposer, domain, urltemplate, nodeIP, routeHost, pathMode string, routeUsePath, http, tlsAcme bool, client *client.Client, restClientConfig *restclient.Config, encoder runtime.Encoder) (ExposeStrategy, error) {
 	switch strings.ToLower(exposer) {
+	case "ambassador":
+		strategy, err := NewAmbassadorStrategy(client, encoder, domain, http, tlsAcme, urltemplate, pathMode)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create ambassador expose strategy")
+		}
+		return strategy, nil
 	case "loadbalancer":
 		strategy, err := NewLoadBalancerStrategy(client, encoder)
 		if err != nil {
