@@ -3,7 +3,6 @@ package exposestrategy
 import (
 	"bytes"
 	"fmt"
-	"reflect"
 	"strconv"
 	"strings"
 
@@ -11,8 +10,6 @@ import (
 	"github.com/pkg/errors"
 	"gopkg.in/v2/yaml"
 	"k8s.io/kubernetes/pkg/api"
-	apierrors "k8s.io/kubernetes/pkg/api/errors"
-	"k8s.io/kubernetes/pkg/api/v1"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
 )
@@ -182,7 +179,7 @@ func (s *AmbassadorStrategy) Add(svc *api.Service) error {
 func (s *AmbassadorStrategy) Remove(svc *api.Service) error {
 	delete(svc.Annotations, "getambassador.io/config")
 
-	_, err = s.client.Services(svc.Namespace).Update(svc)
+	_, err := s.client.Services(svc.Namespace).Update(svc)
 	if err != nil {
 		// yay!
 		return nil
