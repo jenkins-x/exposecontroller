@@ -62,6 +62,7 @@ type Config struct {
 	TLSAcme               bool     `yaml:"tls-acme" json:"tls_acme"`
 	UrlTemplate           string   `yaml:"urltemplate,omitempty" json:"url_template"`
 	Services              []string `yaml:"services,omitempty" json:"services"`
+	IngressClass          string   `yaml:"ingress-class" json:"ingress_class"`
 	// original is the input from which the config was parsed.
 	original string `json:"original"`
 }

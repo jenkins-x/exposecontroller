@@ -11,6 +11,9 @@ data:
 {{- if .Values.config.pathMode }}
     path-mode: {{ .Values.config.pathMode }}
 {{- end }}
+{{- if .Values.config.ingressClass }}
+    ingress-class: {{ .Values.config.ingressClass }}
+{{- end }}
 {{- if .Values.config.urltemplate }}
     urltemplate: {{ .Values.config.urltemplate }}
 {{- end }}
