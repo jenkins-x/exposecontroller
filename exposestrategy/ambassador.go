@@ -169,11 +169,9 @@ func (s *AmbassadorStrategy) Add(svc *api.Service) error {
 
 	_, err = s.client.Services(svc.Namespace).Update(svc)
 	if err != nil {
-		// yay!
-		return nil
-	} else {
 		return errors.Wrapf(err, "failed to patch the service %s/%s", svc.Namespace, appName)
 	}
+	return nil
 }
 
 func (s *AmbassadorStrategy) Remove(svc *api.Service) error {
@@ -181,9 +179,7 @@ func (s *AmbassadorStrategy) Remove(svc *api.Service) error {
 
 	_, err := s.client.Services(svc.Namespace).Update(svc)
 	if err != nil {
-		// yay!
-		return nil
-	} else {
 		return errors.Wrapf(err, "failed to patch the service %s/%s", svc.Namespace, svc.GetName())
 	}
+	return nil
 }
