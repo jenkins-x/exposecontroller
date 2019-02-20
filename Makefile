@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+REGISTRY := docker.io/jenkinsxio
 GO := GO15VENDOREXPERIMENT=1 go
 VERSION := $(shell cat version/VERSION)
 OS := $(shell uname)
@@ -109,14 +110,14 @@ clean:
 
 .PHONY: docker
 docker: out/exposecontroller-linux-amd64
-	docker build -t "jenkinsxio/exposecontroller:dev" .
+	docker build -t "$(REGISTRY)/exposecontroller:dev" .
 
 .PHONY: docker-release
 docker-release: out/exposecontroller-linux-amd64
-	docker build -t docker.io/jenkinsxio/exposecontroller:${VERSION} .
-	docker tag docker.io/jenkinsxio/exposecontroller:${VERSION} docker.io/jenkinsxio/exposecontroller:latest
-	docker push docker.io/jenkinsxio/exposecontroller:${VERSION}
-	docker push docker.io/jenkinsxio/exposecontroller:latest
+	docker build -t $(REGISTRY)/exposecontroller:${VERSION} .
+	docker tag $(REGISTRY)/exposecontroller:${VERSION} $(REGISTRY)/exposecontroller:latest
+	docker push $(REGISTRY)/exposecontroller:${VERSION}
+	docker push $(REGISTRY)/exposecontroller:latest
 
 kube-redeploy: docker
 	kubectl delete pod -l project=exposecontroller-app
