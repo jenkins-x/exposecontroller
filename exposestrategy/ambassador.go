@@ -134,7 +134,7 @@ func (s *AmbassadorStrategy) Add(svc *api.Service) error {
 		"apiVersion": "ambassador/v1",
 		"kind":       "Mapping",
 		"host":       hostName,
-		"name":       fmt.Sprintf("%s_mapping", hostName),
+		"name":       fmt.Sprintf("%s_%s_mapping", hostName, svc.Namespace),
 		"service":    fmt.Sprintf("%s.%s:%s", appName, svc.Namespace, strconv.Itoa(servicePort))}
 
 	joinedAnnotations := new(bytes.Buffer)
