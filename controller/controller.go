@@ -86,7 +86,7 @@ func NewController(
 		}),
 	}
 
-	strategy, err := exposestrategy.New(config.Exposer, config.Domain, config.UrlTemplate, config.NodeIP, config.RouteHost, config.PathMode, config.RouteUsePath, config.HTTP, config.TLSAcme, config.IngressClass, kubeClient, restClientConfig, encoder)
+	strategy, err := exposestrategy.New(config.Exposer, config.Domain, config.UrlTemplate, config.NodeIP, config.RouteHost, config.PathMode, config.RouteUsePath, config.HTTP, config.TLSAcme, config.TLSSecretName, config.IngressClass, kubeClient, restClientConfig, encoder)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create new strategy")
 	}
@@ -234,7 +234,7 @@ func findApiServerFromNode(c *client.Client) string {
 	}
 	items := nodes.Items
 	if len(items) != 1 {
-		glog.Errorf("Number of nodes is %d. We need 1 to detect minishift. Please use  to list nodes to detect minishift: %v", items, err)
+		glog.Errorf("Number of nodes is %d. We need 1 to detect minishift. Please use  to list nodes to detect minishift: %v", len(items), err)
 		return ""
 	}
 	node := items[0]

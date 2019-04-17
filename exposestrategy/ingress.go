@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"k8s.io/kubernetes/pkg/api"
 	apierrors "k8s.io/kubernetes/pkg/api/errors"
-	"k8s.io/kubernetes/pkg/api/v1"
+	v1 "k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -36,7 +36,7 @@ type IngressStrategy struct {
 
 var _ ExposeStrategy = &IngressStrategy{}
 
-func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain string, http, tlsAcme bool, urltemplate, pathMode string, ingressClass string) (*IngressStrategy, error) {
+func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain string, http, tlsAcme bool, tlsSecretName, urltemplate, pathMode string, ingressClass string) (*IngressStrategy, error) {
 	glog.Infof("NewIngressStrategy 1 %v", http)
 	t, err := typeOfMaster(client)
 	if err != nil {
@@ -62,14 +62,15 @@ func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain s
 	glog.Infof("Using url template [%s] format [%s]", urltemplate, urlformat)
 
 	return &IngressStrategy{
-		client:       client,
-		encoder:      encoder,
-		domain:       domain,
-		http:         http,
-		tlsAcme:      tlsAcme,
-		urltemplate:  urlformat,
-		pathMode:     pathMode,
-		ingressClass: ingressClass,
+		client:        client,
+		encoder:       encoder,
+		domain:        domain,
+		http:          http,
+		tlsAcme:       tlsAcme,
+		tlsSecretName: tlsSecretName,
+		urltemplate:   urlformat,
+		pathMode:      pathMode,
+		ingressClass:  ingressClass,
 	}, nil
 }
 
@@ -159,10 +160,11 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 				}
 		*/
 	}
-	var tlsSecretName string
 	if s.tlsAcme {
 		ingress.Annotations["kubernetes.io/tls-acme"] = "true"
-		tlsSecretName = "tls-" + appName
+		if s.tlsSecretName == "" {
+			s.tlsSecretName = "tls-" + appName
+		}
 	}
 
 	annotationsForIngress := svc.Annotations["fabric8.io/ingress.annotations"]
@@ -245,11 +247,11 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 	}
 	ingress.Spec.Rules = append(ingress.Spec.Rules, rule)
 
-	if s.tlsAcme && svc.Annotations["jenkins-x.io/skip.tls"] != "true" {
+	if s.isTLSEnabled(svc) {
 		ingress.Spec.TLS = []extensions.IngressTLS{
 			{
 				Hosts:      []string{hostName},
-				SecretName: tlsSecretName,
+				SecretName: s.tlsSecretName,
 			},
 		}
 	}
@@ -275,7 +277,7 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 		return errors.Errorf("cloned to wrong type: %s", reflect.TypeOf(cloned))
 	}
 
-	if s.tlsAcme {
+	if s.isTLSEnabled(svc) {
 		clone, err = addServiceAnnotationWithProtocol(clone, fullHostName, "https")
 	} else {
 		clone, err = addServiceAnnotationWithProtocol(clone, fullHostName, "http")
@@ -341,4 +343,16 @@ func (s *IngressStrategy) Remove(svc *api.Service) error {
 	}
 
 	return nil
+}
+
+func (s *IngressStrategy) isTLSEnabled(svc *api.Service) bool {
+	if svc != nil && svc.Annotations["jenkins-x.io/skip.tls"] == "true" {
+		return false
+	}
+
+	if len(s.tlsSecretName) > 0 || s.tlsAcme {
+		return true
+	}
+
+	return false
 }
