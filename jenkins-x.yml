@@ -58,7 +58,9 @@ pipelineConfig:
                 - /workspace/go/src/github.com/jenkins-x/exposecontroller
 
               - name: build
-                image: docker.io/golang:1.11.5
+                image: gcr.io/jenkinsxio/builder-go:0.1.332
+                # the gh-release binary is needed when releasing and is missing in the official image below
+                #image: docker.io/golang:1.11.5
                 command: make
                 args:
                 - "out/exposecontroller-linux-amd64"
@@ -189,7 +191,7 @@ pipelineConfig:
                 - /workspace/go/src/github.com/jenkins-x/exposecontroller
 
               - name: release
-                image: docker.io/golang:1.11.5
+                image: gcr.io/jenkinsxio/builder-go:0.1.332
                 command: make
                 args:
                 - release

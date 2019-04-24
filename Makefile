@@ -31,6 +31,7 @@ ROOT_PACKAGE := github.com/jenkins-x/exposecontroller
 
 ORIGINAL_GOPATH := $(GOPATH)
 GOPATH := $(shell pwd)/_gopath
+GITHUB_ACCESS_TOKEN := $(shell cat /builder/home/git-token 2> /dev/null)
 
 BUILDFLAGS := -ldflags \
   " -X $(ROOT_PACKAGE)/version.Version='$(VERSION)'\
@@ -90,7 +91,7 @@ endif
 	cp out/exposecontroller-*-amd64* release
 	cp out/exposecontroller-*-arm* release
 	gh-release checksums sha256
-	gh-release create jenkins-x/exposecontroller $(VERSION) master v$(VERSION)
+	GITHUB_ACCESS_TOKEN=$(GITHUB_ACCESS_TOKEN) gh-release create jenkins-x/exposecontroller $(VERSION) master v$(VERSION)
 
 
 .PHONY: cross
