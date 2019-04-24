@@ -217,4 +217,4 @@ pipelineConfig:
               - name: update-bot
                 image: gcr.io/jenkinsxio/builder-jx:0.1.332
                 command: ./scripts/update-bot.sh
-                dir: /workspace/go/src/github.com/jenkins-x/exposecontroller/charts/exposecontroller
+                dir: /workspace/go/src/github.com/jenkins-x/exposecontroller
