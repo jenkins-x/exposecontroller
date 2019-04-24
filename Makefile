@@ -71,7 +71,7 @@ test: $(GOPATH)/src/$(ORG) out/exposecontroller
 	go test -v $(GOPACKAGES)
 
 .PHONY: release
-release: clean test cross docker-release
+release: clean test cross
 
 ifeq ($(OS),Darwin)
 	sed -i "" -e "s/version:.*/version: $(VERSION)/" charts/exposecontroller/Chart.yaml
