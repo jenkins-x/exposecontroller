@@ -193,7 +193,7 @@ pipelineConfig:
                 command: make
                 args:
                 - release
-                dir: /workspace/go/src/github.com/jenkins-x/exposecontroller/charts/exposecontroller
+                dir: /workspace/go/src/github.com/jenkins-x/exposecontroller
 
               - name: build-and-push-image
                 image: gcr.io/kaniko-project/executor:9912ccbf8d22bbafbf971124600fbb0b13b9cbd6
