@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-REGISTRY := docker.io/jenkinsxio
 GO := GO15VENDOREXPERIMENT=1 go
 VERSION := $(shell cat version/VERSION)
 OS := $(shell uname)
@@ -29,7 +27,7 @@ GOARCH ?= $(shell go env GOARCH)
 BUILD_DIR ?= ./out
 ORG := github.com/jenkins-x
 REPOPATH ?= $(ORG)/exposecontroller
-ROOT_PACKAGE := $(shell go list .)
+ROOT_PACKAGE := github.com/jenkins-x/exposecontroller
 
 ORIGINAL_GOPATH := $(GOPATH)
 GOPATH := $(shell pwd)/_gopath
@@ -107,17 +105,3 @@ $(GOPATH)/src/$(ORG):
 clean:
 	rm -rf $(BUILD_DIR)
 	rm -rf release
-
-.PHONY: docker
-docker: out/exposecontroller-linux-amd64
-	docker build -t "$(REGISTRY)/exposecontroller:dev" .
-
-.PHONY: docker-release
-docker-release: out/exposecontroller-linux-amd64
-	docker build -t $(REGISTRY)/exposecontroller:${VERSION} .
-	docker tag $(REGISTRY)/exposecontroller:${VERSION} $(REGISTRY)/exposecontroller:latest
-	docker push $(REGISTRY)/exposecontroller:${VERSION}
-	docker push $(REGISTRY)/exposecontroller:latest
-
-kube-redeploy: docker
-	kubectl delete pod -l project=exposecontroller-app

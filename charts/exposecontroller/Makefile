@@ -2,6 +2,8 @@ CHART_REPO := http://jenkins-x-chartmuseum:8080
 NAME := exposecontroller
 OS := $(shell uname)
 VERSION := $(shell cat ../../version/VERSION)
+CHARTMUSEUM_CREDS_USR := $(shell cat /builder/home/basic-auth-user 2> /dev/null)
+CHARTMUSEUM_CREDS_PSW := $(shell cat /builder/home/basic-auth-pass 2> /dev/null)
 
 setup:
 	minikube addons enable ingress
