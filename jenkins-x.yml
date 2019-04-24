@@ -176,6 +176,18 @@ pipelineConfig:
                   - -f
                   - /builder/home/basic-auth-pass
 
+              - name: copy
+                image: busybox
+                command: mkdir
+                args:
+                - -p
+                - /workspace/go/src/github.com/jenkins-x/exposecontroller
+                - "&&"
+                - cp
+                - -R
+                - "./"
+                - /workspace/go/src/github.com/jenkins-x/exposecontroller
+
               - name: release
                 image: docker.io/golang:1.11.5
                 command: make
