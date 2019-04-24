@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 GO := GO15VENDOREXPERIMENT=1 go
-VERSION := $(shell cat version/VERSION)
+VERSION ?= $(shell cat version/VERSION)
 OS := $(shell uname)
 REVISION=$(shell git rev-parse --short HEAD 2> /dev/null || echo 'unknown')
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD 2> /dev/null || echo 'unknown')
