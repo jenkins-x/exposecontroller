@@ -1,7 +1,8 @@
-name: exposecontroller
+appVersion: 2.3.106
 home: https://jenkins-x.github.io/jenkins-x-website/
-version: 2.3.37
 icon: https://raw.githubusercontent.com/fabric8-apps/exposecontroller-app/master/src/main/fabric8/icon.png
 maintainers:
-- name: Jenkins X Team
-  email: jenkins-x@googlegroups.com
+- email: jenkins-x@googlegroups.com
+  name: Jenkins X Team
+name: exposecontroller
+version: 2.3.106
