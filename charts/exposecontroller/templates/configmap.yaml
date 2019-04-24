@@ -19,6 +19,9 @@ data:
 {{- end }}
     http: {{ .Values.config.http | default true }}
     tls-acme: {{ .Values.config.tlsacme | default false  }}
+{{- if .Values.config.tlsSecretName }}
+    tls-secret-name: {{ .Values.config.tlsSecretName }}
+{{- end }}
 {{- if .Values.config.extravalues }}
 {{ toYaml .Values.config.extravalues | indent 4 }}
 {{- end }}

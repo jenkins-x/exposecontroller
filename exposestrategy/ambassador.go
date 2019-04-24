@@ -32,7 +32,7 @@ type AmbassadorStrategy struct {
 
 var _ ExposeStrategy = &AmbassadorStrategy{}
 
-func NewAmbassadorStrategy(client *client.Client, encoder runtime.Encoder, domain string, http, tlsAcme bool, urltemplate, pathMode string) (*AmbassadorStrategy, error) {
+func NewAmbassadorStrategy(client *client.Client, encoder runtime.Encoder, domain string, http, tlsAcme bool, tlsSecretName, urltemplate, pathMode string) (*AmbassadorStrategy, error) {
 	glog.Infof("NewAmbassadorStrategy 1 %v", http)
 	t, err := typeOfMaster(client)
 	if err != nil {
@@ -58,13 +58,14 @@ func NewAmbassadorStrategy(client *client.Client, encoder runtime.Encoder, domai
 	glog.Infof("Using url template [%s] format [%s]", urltemplate, urlformat)
 
 	return &AmbassadorStrategy{
-		client:      client,
-		encoder:     encoder,
-		domain:      domain,
-		http:        http,
-		tlsAcme:     tlsAcme,
-		urltemplate: urlformat,
-		pathMode:    pathMode,
+		client:        client,
+		encoder:       encoder,
+		domain:        domain,
+		http:          http,
+		tlsAcme:       tlsAcme,
+		tlsSecretName: tlsSecretName,
+		urltemplate:   urlformat,
+		pathMode:      pathMode,
 	}, nil
 }
 
@@ -145,7 +146,11 @@ func (s *AmbassadorStrategy) Add(svc *api.Service) error {
 	}
 	fmt.Fprintf(joinedAnnotations, "%s", string(yamlAnnotation))
 
-	if s.tlsAcme && svc.Annotations["jenkins-x.io/skip.tls"] != "true" {
+	if s.tlsAcme && s.tlsSecretName == "" {
+		s.tlsSecretName = "tls-" + appName
+	}
+
+	if s.isTLSEnabled(svc) {
 		// we need to prepare the tls module config
 		ambassadorAnnotations = map[string]interface{}{
 			"apiVersion": "ambassador/v1",
@@ -154,7 +159,7 @@ func (s *AmbassadorStrategy) Add(svc *api.Service) error {
 			"config": map[string]interface{}{
 				"server": map[string]interface{}{
 					"enabled": "True",
-					"secret":  "tls-" + appName}}}
+					"secret":  s.tlsSecretName}}}
 
 		yamlAnnotation, err = yaml.Marshal(&ambassadorAnnotations)
 		if err != nil {
@@ -182,4 +187,16 @@ func (s *AmbassadorStrategy) Remove(svc *api.Service) error {
 		return errors.Wrapf(err, "failed to patch the service %s/%s", svc.Namespace, svc.GetName())
 	}
 	return nil
+}
+
+func (s *AmbassadorStrategy) isTLSEnabled(svc *api.Service) bool {
+	if svc != nil && svc.Annotations["jenkins-x.io/skip.tls"] == "true" {
+		return false
+	}
+
+	if len(s.tlsSecretName) > 0 || s.tlsAcme {
+		return true
+	}
+
+	return false
 }
