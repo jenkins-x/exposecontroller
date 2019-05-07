@@ -160,10 +160,14 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 				}
 		*/
 	}
+	var tlsSecretName string
+
 	if s.tlsAcme {
 		ingress.Annotations["kubernetes.io/tls-acme"] = "true"
 		if s.tlsSecretName == "" {
-			s.tlsSecretName = "tls-" + appName
+			tlsSecretName = "tls-" + appName
+		} else {
+			tlsSecretName = s.tlsSecretName
 		}
 	}
 
@@ -251,7 +255,7 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 		ingress.Spec.TLS = []extensions.IngressTLS{
 			{
 				Hosts:      []string{hostName},
-				SecretName: s.tlsSecretName,
+				SecretName: tlsSecretName,
 			},
 		}
 	}
