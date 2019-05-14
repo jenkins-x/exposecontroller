@@ -5,6 +5,7 @@ Annotations: {}
   # use value of `path` to use path based ingress
 # config:
 #   pathMode: "path"
+#   tlsacme: true
 #   extravalues:
 #     foo: bar
 
