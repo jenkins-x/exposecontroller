@@ -61,6 +61,7 @@ type Config struct {
 	HTTP                  bool     `yaml:"http" json:"http"`
 	TLSAcme               bool     `yaml:"tls-acme" json:"tls_acme"`
 	TLSSecretName         string   `yaml:"tls-secret-name" json:"tls_secret_name"`
+	TLSUseWildcard        bool     `yaml:"tls-use-wildcard" json:"tls_use_wildcard"`
 	UrlTemplate           string   `yaml:"urltemplate,omitempty" json:"url_template"`
 	Services              []string `yaml:"services,omitempty" json:"services"`
 	IngressClass          string   `yaml:"ingress-class" json:"ingress_class"`

@@ -25,18 +25,19 @@ type IngressStrategy struct {
 	client  *client.Client
 	encoder runtime.Encoder
 
-	domain        string
-	tlsSecretName string
-	http          bool
-	tlsAcme       bool
-	urltemplate   string
-	pathMode      string
-	ingressClass  string
+	domain         string
+	tlsSecretName  string
+	tlsUseWildcard bool
+	http           bool
+	tlsAcme        bool
+	urltemplate    string
+	pathMode       string
+	ingressClass   string
 }
 
 var _ ExposeStrategy = &IngressStrategy{}
 
-func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain string, http, tlsAcme bool, tlsSecretName, urltemplate, pathMode string, ingressClass string) (*IngressStrategy, error) {
+func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain string, http, tlsAcme bool, tlsSecretName string, tlsUseWildcard bool, urltemplate, pathMode string, ingressClass string) (*IngressStrategy, error) {
 	glog.Infof("NewIngressStrategy 1 %v", http)
 	t, err := typeOfMaster(client)
 	if err != nil {
@@ -62,15 +63,16 @@ func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain s
 	glog.Infof("Using url template [%s] format [%s]", urltemplate, urlformat)
 
 	return &IngressStrategy{
-		client:        client,
-		encoder:       encoder,
-		domain:        domain,
-		http:          http,
-		tlsAcme:       tlsAcme,
-		tlsSecretName: tlsSecretName,
-		urltemplate:   urlformat,
-		pathMode:      pathMode,
-		ingressClass:  ingressClass,
+		client:         client,
+		encoder:        encoder,
+		domain:         domain,
+		http:           http,
+		tlsAcme:        tlsAcme,
+		tlsSecretName:  tlsSecretName,
+		tlsUseWildcard: tlsUseWildcard,
+		urltemplate:    urlformat,
+		pathMode:       pathMode,
+		ingressClass:   ingressClass,
 	}, nil
 }
 
@@ -85,6 +87,10 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 	}
 
 	hostName := fmt.Sprintf(s.urltemplate, appName, svc.Namespace, s.domain)
+	tlsHostName := hostName
+	if s.tlsUseWildcard {
+		tlsHostName = "*." + s.domain
+	}
 	fullHostName := hostName
 	path := svc.Annotations["fabric8.io/ingress.path"]
 	pathMode := svc.Annotations["fabric8.io/path.mode"]
@@ -254,7 +260,7 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 	if s.isTLSEnabled(svc) {
 		ingress.Spec.TLS = []extensions.IngressTLS{
 			{
-				Hosts:      []string{hostName},
+				Hosts:      []string{tlsHostName},
 				SecretName: tlsSecretName,
 			},
 		}
