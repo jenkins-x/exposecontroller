@@ -12,6 +12,13 @@ The ingress URL uses the service name that contains the `expose` annotation, if 
 kubectl annotate svc foo fabric8.io/ingress.name=bar
 ```
 
+### Host name
+
+The ingress URL uses the service name that contains the `expose` annotation, if you want the host name to be different yet be a separate ingress object:
+```sh
+kubectl annotate svc foo fabric8.io/host.name=bar
+```
+
 ### Multiple backend services
 
 An ingress rule can have multiple service backends, traffic is managed using a path see https://kubernetes.io/docs/concepts/services-networking/ingress/#the-ingress-resource
