@@ -86,7 +86,7 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 		}
 	}
 
-	hostName := fmt.Sprintf(s.urltemplate, appName, svc.Namespace, s.domain)
+	hostName = fmt.Sprintf(s.urltemplate, appName, svc.Namespace, s.domain)
 	tlsHostName := hostName
 	if s.tlsUseWildcard {
 		tlsHostName = "*." + s.domain
