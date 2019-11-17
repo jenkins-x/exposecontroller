@@ -86,7 +86,12 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 		}
 	}
 
-	hostName = fmt.Sprintf(s.urltemplate, appName, svc.Namespace, s.domain)
+	hostName := svc.Annotations["fabric8.io/host.name"]
+	if hostName == "" {
+		hostName = appName
+	}
+
+	hostName = fmt.Sprintf(s.urltemplate, hostName, svc.Namespace, s.domain)
 	tlsHostName := hostName
 	if s.tlsUseWildcard {
 		tlsHostName = "*." + s.domain
