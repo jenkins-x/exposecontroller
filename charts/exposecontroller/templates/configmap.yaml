@@ -15,7 +15,7 @@ data:
     ingress-class: {{ .Values.config.ingressClass }}
 {{- end }}
 {{- if .Values.config.urltemplate }}
-    urltemplate: {{ .Values.config.urltemplate }}
+    urltemplate: {{ .Values.config.urltemplate | quote }}
 {{- end }}
     http: {{ .Values.config.http | default true }}
     tls-acme: {{ .Values.config.tlsacme | default false  }}
