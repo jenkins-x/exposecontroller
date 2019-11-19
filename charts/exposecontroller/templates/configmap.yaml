@@ -22,6 +22,9 @@ data:
 {{- if .Values.config.tlsSecretName }}
     tls-secret-name: {{ .Values.config.tlsSecretName }}
 {{- end }}
+{{- if .Values.config.tlsUseWildcard }}
+    tls-use-wildcard: {{ .Values.config.tlsUseWildcard }}
+{{- end }}
 {{- if .Values.config.extravalues }}
 {{ toYaml .Values.config.extravalues | indent 4 }}
 {{- end }}
