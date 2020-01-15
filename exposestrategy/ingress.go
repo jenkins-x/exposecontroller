@@ -26,6 +26,7 @@ type IngressStrategy struct {
 	encoder runtime.Encoder
 
 	domain         string
+	internalDomain string
 	tlsSecretName  string
 	tlsUseWildcard bool
 	http           bool
@@ -37,7 +38,7 @@ type IngressStrategy struct {
 
 var _ ExposeStrategy = &IngressStrategy{}
 
-func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain string, http, tlsAcme bool, tlsSecretName string, tlsUseWildcard bool, urltemplate, pathMode string, ingressClass string) (*IngressStrategy, error) {
+func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain string, internalDomain string, http, tlsAcme bool, tlsSecretName string, tlsUseWildcard bool, urltemplate, pathMode string, ingressClass string) (*IngressStrategy, error) {
 	glog.Infof("NewIngressStrategy 1 %v", http)
 	t, err := typeOfMaster(client)
 	if err != nil {
@@ -66,6 +67,7 @@ func NewIngressStrategy(client *client.Client, encoder runtime.Encoder, domain s
 		client:         client,
 		encoder:        encoder,
 		domain:         domain,
+		internalDomain: internalDomain,
 		http:           http,
 		tlsAcme:        tlsAcme,
 		tlsSecretName:  tlsSecretName,
@@ -91,10 +93,15 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 		hostName = appName
 	}
 
-	hostName = fmt.Sprintf(s.urltemplate, hostName, svc.Namespace, s.domain)
+	domain := s.domain
+	if svc.Annotations["fabric8.io/use.internal.domain"] == "true" {
+		domain = s.internalDomain
+	}
+
+	hostName = fmt.Sprintf(s.urltemplate, hostName, svc.Namespace, domain)
 	tlsHostName := hostName
 	if s.tlsUseWildcard {
-		tlsHostName = "*." + s.domain
+		tlsHostName = "*." + domain
 	}
 	fullHostName := hostName
 	path := svc.Annotations["fabric8.io/ingress.path"]
@@ -108,7 +115,7 @@ func (s *IngressStrategy) Add(svc *api.Service) error {
 			suffix = "/"
 		}
 		path = UrlJoin("/", svc.Namespace, appName, suffix)
-		hostName = s.domain
+		hostName = domain
 		fullHostName = UrlJoin(hostName, path)
 	}
 

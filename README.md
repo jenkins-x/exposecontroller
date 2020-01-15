@@ -38,6 +38,19 @@ kubectl annotate svc foo fabric8.io/exposePort=8020
 
 It not annotation is defined, it will pick the first port available in the list.
 
+### Internal Ingress
+
+If you need to expose a service on an internal ingress contoller:
+```sh
+kubectl annotate svc foo fabric8.io/use.internal.domain: "true"
+```
+
+Also make sure you specify the ingress class for your internal ingress controller; say `kubernetes.io/ingress.class: nginx-internal`
+
+Requirements:
+ - Create an internal ingress contoller.
+ - Set value for `internalDomain` in the `exposecontoller` configmap
+
 ### Daemon mode
 
 To run a one shot exposecontroller pass the `--daemon` flag
